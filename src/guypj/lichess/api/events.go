@@ -20,10 +20,10 @@ type ChallengeEvent struct {
 		Status string
 		Rated  bool
 
-		Variant struct {
-			Key  string
-			Name string
-		}
+		Challenger User
+		DestUser   User
+
+		Variant Variant
 
 		TimeControl struct {
 			Type      string
@@ -92,10 +92,10 @@ func (lc *LichessClient) StreamEvents() (chan EventMessage, error) {
 		return nil, err
 	}
 
-	actionChannel := make(chan EventMessage)
+	eventChannel := make(chan EventMessage)
 	go func() {
 		defer res.Body.Close()
-		defer close(actionChannel)
+		defer close(eventChannel)
 		decoder := json.NewDecoder(res.Body)
 
 		for decoder.More() {
@@ -107,9 +107,9 @@ func (lc *LichessClient) StreamEvents() (chan EventMessage, error) {
 				return
 			}
 
-			actionChannel <- msg
+			eventChannel <- msg
 		}
 	}()
 
-	return actionChannel, nil
+	return eventChannel, nil
 }
