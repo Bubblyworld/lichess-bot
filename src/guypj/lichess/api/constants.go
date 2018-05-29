@@ -18,3 +18,7 @@ type Variant struct {
 	Key  string
 	Name string
 }
+
+type Ok struct {
+	Ok bool
+}

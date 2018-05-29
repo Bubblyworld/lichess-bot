@@ -31,10 +31,10 @@ type GameStateGameState struct {
 	Type  string
 	Moves string
 
-	WTime int64
+	WTime int64 // ms
 	WInc  int64
 
-	BTime int64
+	BTime int64 // ms
 	BInc  int64
 }
 

@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
-
 	"guypj/lichess/api"
+	"guypj/lichess/bot"
+	"sync"
 )
 
 var apiKey = flag.String("api-key", "", "The Lichess API key to use for this bot's requests.")
@@ -20,21 +20,14 @@ func main() {
 	}
 
 	client := api.NewLichessClient(*apiKey)
-	log.Println("Lichess-Bot starting.")
+	state := bot.NewState(client)
 
-	eventsChannel, err := client.StreamEvents()
-	if err != nil {
-		log.Fatalf("Error: %v", err)
-	}
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(3)
 
-	for {
-		msg, ok := <-eventsChannel
-		if !ok {
-			break
-		}
+	go bot.ListenForEventsForever(state, &waitGroup)
+	go bot.AcceptChallengesForever(state, &waitGroup)
+	go bot.PlayGamesForever(state, &waitGroup)
 
-		log.Printf("Received message of type: %d", msg.Type)
-	}
-
-	log.Println("Lichess-Bot stopping.")
+	waitGroup.Wait()
 }
