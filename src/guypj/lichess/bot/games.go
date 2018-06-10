@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -145,7 +144,13 @@ func handleMessage(state *State, game *Game, msg api.GameStateMessage) error {
 		return anyErr
 	}
 
-	if isOurTurn(game) {
+	// If the game is not finished and it's our turn, we should move.
+	isOver, err := gameIsOver(game)
+	if err != nil {
+		return err
+	}
+
+	if isOurTurn(game) && !isOver {
 		err := makeMove(state, game)
 		if err != nil {
 			return err
@@ -228,12 +233,10 @@ func makeMove(state *State, game *Game) error {
 		return err
 	}
 
-	// Select a random legal move.
-	legalMoves := board.GenerateLegalMoves()
-	if len(legalMoves) == 0 {
-		return nil
+	move, err := Search(*board)
+	if err != nil {
+		return err
 	}
 
-	move := legalMoves[rand.Intn(len(legalMoves))]
 	return state.client.PostMove(game.ID, move.String())
 }
