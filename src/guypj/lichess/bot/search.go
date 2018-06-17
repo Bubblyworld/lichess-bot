@@ -2,17 +2,20 @@ package bot
 
 import (
 	"errors"
+        "fmt"
 	"math"
 
 	dragon "github.com/dylhunn/dragontoothmg"
 )
 
 func Search(board dragon.Board) (*dragon.Move, error) {
-	bestMove, _ := search(board, 4)
+	bestMove, eval := search(board, 1)
 
 	if bestMove == nil {
 		return nil, errors.New("bot: no legal move found in search")
 	}
+
+        fmt.Printf("Best move %6s eval %3.2f\n", bestMove.String(), eval)
 
 	return bestMove, nil
 }
@@ -26,6 +29,8 @@ func search(board dragon.Board, depth int) (*dragon.Move, float64) {
 		return nil, Evaluate(board, legalMoves)
 	}
 
+        fmt.Printf("Eval: %3.2f\n", Evaluate(board, legalMoves))
+
 	var bestMove dragon.Move
 	var bestScore float64 = math.MaxFloat64
 	if board.Wtomove {
@@ -37,6 +42,8 @@ func search(board dragon.Board, depth int) (*dragon.Move, float64) {
 		_, score := search(board, depth-1)
 		unapply()
 
+                fmt.Printf("         move %6s eval %3.2f\n", move.String(), score)
+                
 		// If we're white, we try to maximise our score. If we're black, we try to
 		// minimise our score.
 		if board.Wtomove {
