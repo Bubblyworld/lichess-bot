@@ -13,10 +13,7 @@ const BishopVal = 300
 const RookVal   = 500
 const QueenVal  = 900
 
-// Stolen from SunFish
-
-// Wrong ordering for dragon - TODO! Current pos is left<->right swapped.
-
+// Stolen from SunFish (tables inverted to reflect dragon pos ordering)
 var PawnPosVals = []int8 {
           0,   0,   0,   0,   0,   0,   0,   0,
         -31,   8,  -7, -37, -36, -14,   3, -31,
@@ -77,7 +74,7 @@ var KingPosVals= []int8 {
         -32,  10,  55,  56,  56,  55,  10,   3,
           4,  54,  47, -99, -99,  60,  83, -62}
 
-// From - https://chessprogramming.wikispaces.com/Simplified+evaluation+function
+// From - https://chessprogramming.wikispaces.com/Simplified+evaluation+function - (tables inverted to reflect dragon pos ordering)
 var KingEndgamePosVals = []int8 {
         -50,-30,-30,-30,-30,-30,-30,-50,
         -30,-30,  0,  0,  0,  0,-30,-30,
