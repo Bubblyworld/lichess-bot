@@ -13,7 +13,7 @@ const BishopVal = 300
 const RookVal = 500
 const QueenVal = 900
 
-// Stolen from SunFish (tables inverted to reflect dragon pos ordering)
+// Stolen from SunFish - tables inverted to reflect dragon pos ordering
 var PawnPosVals = []int8{
 	0, 0, 0, 0, 0, 0, 0, 0,
 	-31, 8, -7, -37, -36, -14, 3, -31,
@@ -74,7 +74,7 @@ var KingPosVals = []int8{
 	-32, 10, 55, 56, 56, 55, 10, 3,
 	4, 54, 47, -99, -99, 60, 83, -62}
 
-// From - https://chessprogramming.wikispaces.com/Simplified+evaluation+function - (tables inverted to reflect dragon pos ordering)
+// From https://chessprogramming.wikispaces.com/Simplified+evaluation+function - tables inverted to reflect dragon pos ordering
 var KingEndgamePosVals = []int8{
 	-50, -30, -30, -30, -30, -30, -30, -50,
 	-30, -30, 0, 0, 0, 0, -30, -30,
@@ -85,19 +85,35 @@ var KingEndgamePosVals = []int8{
 	-30, -20, -10, 0, 0, -10, -20, -30,
 	-50, -40, -30, -20, -20, -30, -40, -50}
 
-func Evaluate(board dragon.Board, legalMoves []dragon.Move) float64 {
-	if isStalemate(board, legalMoves) {
-		return 0 // draw
+const MateIn0 = int(math.MaxInt16)
+
+func MateInN(depth int) int { return MateIn0 - depth }
+
+const MaxDepth = 256
+
+// Return (isMate, depth)
+func IsMateInN(eval int) (bool, int) {
+	if(eval < 0) {
+		eval = -eval
 	}
 
-	if isMate(board, legalMoves) {
-		if board.Wtomove {
-			return -math.MaxFloat64 // black wins
-		}
-
-		return math.MaxFloat64 // white wins
+	if eval >= MateInN(MaxDepth) {
+		return true, MateIn0-eval
 	}
+	return false, 0
+}
 
+func BestEval(isWhite bool) int {
+	bestEval := -MateIn0
+	if isWhite {
+		bestEval = MateIn0
+	}
+	return bestEval
+}
+
+// Static eval in centipawns - always from white's perspective
+// Note: ignores mate/stalemate
+func Evaluate(board dragon.Board) int {
 	whitePiecesVal := PiecesVal(board.White)
 	blackPiecesVal := PiecesVal(board.Black)
 
@@ -108,7 +124,7 @@ func Evaluate(board dragon.Board, legalMoves []dragon.Move) float64 {
 
 	piecesPosEval := whitePiecesPosVal - blackPiecesPosVal
 
-	return float64(piecesEval) + piecesPosEval
+	return piecesEval + piecesPosEval
 }
 
 // Sum of individual piece evals
@@ -142,7 +158,7 @@ func EndGameRatio(piecesVal int) float64 {
 
 // Sum of piece position values
 //   endGameRatio is a number between 0.0 and 1.0 where 1.0 means we're in end-game
-func PiecesPosVal(bitboards dragon.Bitboards, isWhite bool, endGameRatio float64) float64 {
+func PiecesPosVal(bitboards dragon.Bitboards, isWhite bool, endGameRatio float64) int {
 	eval := PieceTypePiecesPosVal(bitboards.Pawns, isWhite, PawnPosVals)
 	eval += PieceTypePiecesPosVal(bitboards.Bishops, isWhite, BishopPosVals)
 	eval += PieceTypePiecesPosVal(bitboards.Knights, isWhite, KnightPosVals)
@@ -154,7 +170,7 @@ func PiecesPosVal(bitboards dragon.Bitboards, isWhite bool, endGameRatio float64
 
 	kingEval := (1.0-endGameRatio)*float64(kingStartEval) + endGameRatio*float64(kingEndgameEval)
 
-	return float64(eval) + kingEval
+	return eval + int(kingEval)
 }
 
 // Sum of piece position values for a particular type of piece
@@ -176,15 +192,4 @@ func PieceTypePiecesPosVal(bitmask uint64, isWhite bool, piecePosVals []int8) in
 	}
 
 	return eval
-}
-
-// If there are no legal moves, there are two possibilities - either our king
-// is in check, or it isn't. In the first case it's mate and we've lost, and
-// in the second case it's stalemate and therefore a draw.
-func isStalemate(board dragon.Board, legalMoves []dragon.Move) bool {
-	return len(legalMoves) == 0 && !board.OurKingInCheck()
-}
-
-func isMate(board dragon.Board, legalMoves []dragon.Move) bool {
-	return len(legalMoves) == 0 && board.OurKingInCheck()
 }
