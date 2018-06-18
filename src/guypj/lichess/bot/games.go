@@ -14,7 +14,7 @@ import (
 )
 
 // TODO(guy) should be in state
-var botName = "Lisa0"
+var botName = "Lisao"
 
 type Game struct {
 	ID         string
