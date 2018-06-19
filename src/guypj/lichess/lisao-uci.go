@@ -14,7 +14,7 @@ import (
 	lisao "guypj/lichess/bot"
 )
 
-var VersionString = "0.0e Pikachu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0f Pikachu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()

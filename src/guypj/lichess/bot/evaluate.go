@@ -7,6 +7,14 @@ import (
 	dragon "github.com/dylhunn/dragontoothmg"
 )
 
+// Eval in centi-pawns, i.e. 100 === 1 pawn
+type EvalCp int16
+
+const WhiteCheckMateEval EvalCp = math.MaxInt16
+const BlackCheckMateEval EvalCp = -math.MaxInt16 // don't use MinInt16 cos it's not symmetrical with MaxInt16
+
+const DrawEval EvalCp = 0
+
 const PawnVal = 100
 const KnightVal = 300
 const BishopVal = 300
@@ -85,17 +93,17 @@ var KingEndgamePosVals = []int8{
 	-30, -20, -10, 0, 0, -10, -20, -30,
 	-50, -40, -30, -20, -20, -30, -40, -50}
 
-func Evaluate(board *dragon.Board, legalMoves []dragon.Move) float64 {
+func Evaluate(board *dragon.Board, legalMoves []dragon.Move) EvalCp {
 	if isStalemate(board, legalMoves) {
-		return 0 // draw
+		return DrawEval
 	}
 
 	if isMate(board, legalMoves) {
 		if board.Wtomove {
-			return -math.MaxFloat64 // black wins
+			return BlackCheckMateEval
 		}
 
-		return math.MaxFloat64 // white wins
+		return WhiteCheckMateEval
 	}
 
 	whitePiecesVal := PiecesVal(&board.White)
@@ -108,26 +116,26 @@ func Evaluate(board *dragon.Board, legalMoves []dragon.Move) float64 {
 
 	piecesPosEval := whitePiecesPosVal - blackPiecesPosVal
 
-	return float64(piecesEval) + piecesPosEval
+	return piecesEval + piecesPosEval
 }
 
 // Sum of individual piece evals
-func PiecesVal(bitboards *dragon.Bitboards) int {
+func PiecesVal(bitboards *dragon.Bitboards) EvalCp {
 	eval := PawnVal * bits.OnesCount64(bitboards.Pawns)
 	eval += BishopVal * bits.OnesCount64(bitboards.Bishops)
 	eval += KnightVal * bits.OnesCount64(bitboards.Knights)
 	eval += RookVal * bits.OnesCount64(bitboards.Rooks)
 	eval += QueenVal * bits.OnesCount64(bitboards.Queens)
 
-	return eval
+	return EvalCp(eval)
 }
 
 // Transition smoothly from King starting pos table to king end-game table between these total piece values.
-const EndGamePiecesValHi = 3000
-const EndGamePiecesValLo = 1200
+const EndGamePiecesValHi EvalCp = 3000
+const EndGamePiecesValLo EvalCp = 1200
 
 // To what extent are we in end game; from 0.0 (not at all) to 1.0 (definitely)
-func EndGameRatio(piecesVal int) float64 {
+func EndGameRatio(piecesVal EvalCp) float64 {
 	// Somewhat arbitrary
 	if piecesVal > EndGamePiecesValHi {
 		return 0.0
@@ -142,7 +150,7 @@ func EndGameRatio(piecesVal int) float64 {
 
 // Sum of piece position values
 //   endGameRatio is a number between 0.0 and 1.0 where 1.0 means we're in end-game
-func PiecesPosVal(bitboards *dragon.Bitboards, isWhite bool, endGameRatio float64) float64 {
+func PiecesPosVal(bitboards *dragon.Bitboards, isWhite bool, endGameRatio float64) EvalCp {
 	eval := PieceTypePiecesPosVal(bitboards.Pawns, isWhite, PawnPosVals)
 	eval += PieceTypePiecesPosVal(bitboards.Bishops, isWhite, BishopPosVals)
 	eval += PieceTypePiecesPosVal(bitboards.Knights, isWhite, KnightPosVals)
@@ -154,17 +162,17 @@ func PiecesPosVal(bitboards *dragon.Bitboards, isWhite bool, endGameRatio float6
 
 	kingEval := (1.0-endGameRatio)*float64(kingStartEval) + endGameRatio*float64(kingEndgameEval)
 
-	return float64(eval) + kingEval
+	return eval + EvalCp(kingEval)
 }
 
 // Sum of piece position values for a particular type of piece
-func PieceTypePiecesPosVal(bitmask uint64, isWhite bool, piecePosVals []int8) int {
+func PieceTypePiecesPosVal(bitmask uint64, isWhite bool, piecePosVals []int8) EvalCp {
 	if !isWhite {
 		// Flip the bitmask of Black pieces into White's perspective
 		bitmask = bits.ReverseBytes64(bitmask)
 	}
 
-	eval := 0
+	var eval EvalCp = 0
 
 	for bitmask != 0 {
 		pos := bits.TrailingZeros64(bitmask)
@@ -172,7 +180,7 @@ func PieceTypePiecesPosVal(bitmask uint64, isWhite bool, piecePosVals []int8) in
 		firstBit := uint64(1) << uint(pos)
 		bitmask = bitmask ^ firstBit
 
-		eval += int(piecePosVals[pos])
+		eval += EvalCp(piecePosVals[pos])
 	}
 
 	return eval

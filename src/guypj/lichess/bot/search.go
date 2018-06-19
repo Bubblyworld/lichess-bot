@@ -2,8 +2,6 @@ package bot
 
 import (
 	"errors"
-	//"fmt"
-	"math"
 
 	dragon "github.com/dylhunn/dragontoothmg"
 )
@@ -22,9 +20,9 @@ func Search(board *dragon.Board) (dragon.Move, error) {
 	return bestMove, nil
 }
 
-// search returns the best score attainable through minmax from the given
+// search returns the best eval attainable through minmax from the given
 // position, along with the move leading to the principal variation.
-func search(board *dragon.Board, depth int) (dragon.Move, float64) {
+func search(board *dragon.Board, depth int) (dragon.Move, EvalCp) {
 	legalMoves := board.GenerateLegalMoves()
 
 	if depth <= 0 || len(legalMoves) == 0 {
@@ -34,30 +32,30 @@ func search(board *dragon.Board, depth int) (dragon.Move, float64) {
 	//fmt.Printf("Eval: %3.2f\n", Evaluate(board, legalMoves))
 
 	var bestMove dragon.Move
-	var bestScore float64 = math.MaxFloat64
+	var bestEval EvalCp = WhiteCheckMateEval
 	if board.Wtomove {
-		bestScore = -math.MaxFloat64
+		bestEval = BlackCheckMateEval
 	}
 
 	for _, move := range legalMoves {
 		unapply := board.Apply(move)
-		_, score := search(board, depth-1)
+		_, eval := search(board, depth-1)
 		unapply()
 
-		//fmt.Printf("         move %6s eval %3.2f\n", move.String(), score)
+		//fmt.Printf("         move %6s eval %3d\n", move.String(), eval)
 
-		// If we're white, we try to maximise our score. If we're black, we try to
-		// minimise our score.
+		// If we're white, we try to maximise our eval. If we're black, we try to
+		// minimise our eval.
 		if board.Wtomove {
-			if score >= bestScore {
-				bestScore, bestMove = score, move
+			if eval >= bestEval {
+				bestEval, bestMove = eval, move
 			}
 		} else {
-			if score <= bestScore {
-				bestScore, bestMove = score, move
+			if eval <= bestEval {
+				bestEval, bestMove = eval, move
 			}
 		}
 	}
 
-	return bestMove, bestScore
+	return bestMove, bestEval
 }
