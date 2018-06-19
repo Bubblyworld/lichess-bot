@@ -233,7 +233,7 @@ func makeMove(state *State, game *Game) error {
 		return err
 	}
 
-	move, err := Search(*board)
+	move, err := Search(board)
 	if err != nil {
 		return err
 	}

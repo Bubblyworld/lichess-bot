@@ -85,7 +85,7 @@ var KingEndgamePosVals = []int8{
 	-30, -20, -10, 0, 0, -10, -20, -30,
 	-50, -40, -30, -20, -20, -30, -40, -50}
 
-func Evaluate(board dragon.Board, legalMoves []dragon.Move) float64 {
+func Evaluate(board *dragon.Board, legalMoves []dragon.Move) float64 {
 	if isStalemate(board, legalMoves) {
 		return 0 // draw
 	}
@@ -98,13 +98,13 @@ func Evaluate(board dragon.Board, legalMoves []dragon.Move) float64 {
 		return math.MaxFloat64 // white wins
 	}
 
-	whitePiecesVal := PiecesVal(board.White)
-	blackPiecesVal := PiecesVal(board.Black)
+	whitePiecesVal := PiecesVal(&board.White)
+	blackPiecesVal := PiecesVal(&board.Black)
 
 	piecesEval := whitePiecesVal - blackPiecesVal
 
-	whitePiecesPosVal := PiecesPosVal(board.White, true, EndGameRatio(whitePiecesVal))
-	blackPiecesPosVal := PiecesPosVal(board.Black, false, EndGameRatio(blackPiecesVal))
+	whitePiecesPosVal := PiecesPosVal(&board.White, true, EndGameRatio(whitePiecesVal))
+	blackPiecesPosVal := PiecesPosVal(&board.Black, false, EndGameRatio(blackPiecesVal))
 
 	piecesPosEval := whitePiecesPosVal - blackPiecesPosVal
 
@@ -112,7 +112,7 @@ func Evaluate(board dragon.Board, legalMoves []dragon.Move) float64 {
 }
 
 // Sum of individual piece evals
-func PiecesVal(bitboards dragon.Bitboards) int {
+func PiecesVal(bitboards *dragon.Bitboards) int {
 	eval := PawnVal * bits.OnesCount64(bitboards.Pawns)
 	eval += BishopVal * bits.OnesCount64(bitboards.Bishops)
 	eval += KnightVal * bits.OnesCount64(bitboards.Knights)
@@ -142,7 +142,7 @@ func EndGameRatio(piecesVal int) float64 {
 
 // Sum of piece position values
 //   endGameRatio is a number between 0.0 and 1.0 where 1.0 means we're in end-game
-func PiecesPosVal(bitboards dragon.Bitboards, isWhite bool, endGameRatio float64) float64 {
+func PiecesPosVal(bitboards *dragon.Bitboards, isWhite bool, endGameRatio float64) float64 {
 	eval := PieceTypePiecesPosVal(bitboards.Pawns, isWhite, PawnPosVals)
 	eval += PieceTypePiecesPosVal(bitboards.Bishops, isWhite, BishopPosVals)
 	eval += PieceTypePiecesPosVal(bitboards.Knights, isWhite, KnightPosVals)
@@ -181,10 +181,10 @@ func PieceTypePiecesPosVal(bitmask uint64, isWhite bool, piecePosVals []int8) in
 // If there are no legal moves, there are two possibilities - either our king
 // is in check, or it isn't. In the first case it's mate and we've lost, and
 // in the second case it's stalemate and therefore a draw.
-func isStalemate(board dragon.Board, legalMoves []dragon.Move) bool {
+func isStalemate(board *dragon.Board, legalMoves []dragon.Move) bool {
 	return len(legalMoves) == 0 && !board.OurKingInCheck()
 }
 
-func isMate(board dragon.Board, legalMoves []dragon.Move) bool {
+func isMate(board *dragon.Board, legalMoves []dragon.Move) bool {
 	return len(legalMoves) == 0 && board.OurKingInCheck()
 }

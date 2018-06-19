@@ -8,7 +8,7 @@ import (
 	dragon "github.com/dylhunn/dragontoothmg"
 )
 
-func Search(board dragon.Board) (*dragon.Move, error) {
+func Search(board *dragon.Board) (*dragon.Move, error) {
 	bestMove, _ /*eval*/ := search(board, 4)
 
 	if bestMove == nil {
@@ -22,7 +22,7 @@ func Search(board dragon.Board) (*dragon.Move, error) {
 
 // search returns the best score attainable through minmax from the given
 // position, along with the move leading to the principal variation.
-func search(board dragon.Board, depth int) (*dragon.Move, float64) {
+func search(board *dragon.Board, depth int) (*dragon.Move, float64) {
 	legalMoves := board.GenerateLegalMoves()
 
 	if depth <= 0 || len(legalMoves) == 0 {
