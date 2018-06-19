@@ -1,17 +1,17 @@
-package bot
+package main
 
 import (
 	"log"
 	"sync"
 	"time"
 
-	"guypj/lichess/api"
+	"clanpj/lisao/lichess"
 )
 
 type Challenge struct {
 	ID         string
-	Challenger api.User
-	Variant    api.Variant
+	Challenger lichess.User
+	Variant    lichess.Variant
 
 	Retries int
 }

@@ -1,4 +1,4 @@
-package bot
+package engine
 
 import (
 	"errors"

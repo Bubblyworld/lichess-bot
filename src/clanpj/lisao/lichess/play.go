@@ -1,4 +1,4 @@
-package api
+package lichess
 
 func (lc *LichessClient) PostMove(id, moveUCI string) error {
 	apiUrl := "/api/bot/game/" + id + "/move/" + moveUCI

@@ -1,10 +1,10 @@
-package bot
+package main
 
 import (
 	"log"
 	"sync"
 
-	"guypj/lichess/api"
+	"clanpj/lisao/lichess"
 )
 
 func ListenForEventsForever(state *State, waitGroup *sync.WaitGroup) {
@@ -23,16 +23,16 @@ func ListenForEventsForever(state *State, waitGroup *sync.WaitGroup) {
 		}
 
 		switch msg.Type {
-		case api.ChallengeEventType:
-			challenge := msg.Data.(api.ChallengeEvent)
+		case lichess.ChallengeEventType:
+			challenge := msg.Data.(lichess.ChallengeEvent)
 			state.PushChallenge(Challenge{
 				ID:         challenge.Challenge.ID,
 				Challenger: challenge.Challenge.Challenger,
 				Variant:    challenge.Challenge.Variant,
 			})
 
-		case api.GameStartEventType:
-			gameStart := msg.Data.(api.GameStartEvent)
+		case lichess.GameStartEventType:
+			gameStart := msg.Data.(lichess.GameStartEvent)
 			state.PushGame(&Game{
 				ID: gameStart.Game.ID,
 			})

@@ -1,4 +1,4 @@
-package bot
+package main
 
 import (
 	"errors"
@@ -10,7 +10,8 @@ import (
 
 	dragon "github.com/dylhunn/dragontoothmg"
 
-	"guypj/lichess/api"
+	"clanpj/lisao/engine"
+	"clanpj/lisao/lichess"
 )
 
 // TODO(guy) should be in state
@@ -121,17 +122,17 @@ func playGame(state *State, game *Game) {
 	}
 }
 
-func handleMessage(state *State, game *Game, msg api.GameStateMessage) error {
+func handleMessage(state *State, game *Game, msg lichess.GameStateMessage) error {
 	var anyErr error
 	switch msg.Type {
-	case api.GameFullGameStateType:
-		anyErr = handleInitialGameState(game, msg.Data.(api.GameFullGameState))
+	case lichess.GameFullGameStateType:
+		anyErr = handleInitialGameState(game, msg.Data.(lichess.GameFullGameState))
 
-	case api.GameStateGameStateType:
-		anyErr = handleGameUpdate(game, msg.Data.(api.GameStateGameState))
+	case lichess.GameStateGameStateType:
+		anyErr = handleGameUpdate(game, msg.Data.(lichess.GameStateGameState))
 
-	case api.ChatLineGameStateType:
-		anyErr = handleChatEvent(game, msg.Data.(api.ChatLineGameState))
+	case lichess.ChatLineGameStateType:
+		anyErr = handleChatEvent(game, msg.Data.(lichess.ChatLineGameState))
 
 	default:
 		errMsg := fmt.Sprintf("bot: Received unknown game update for game %s: %v",
@@ -160,7 +161,7 @@ func handleMessage(state *State, game *Game, msg api.GameStateMessage) error {
 	return nil
 }
 
-func handleInitialGameState(game *Game, initialState api.GameFullGameState) error {
+func handleInitialGameState(game *Game, initialState lichess.GameFullGameState) error {
 	game.InitialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 	game.Moves = []string{}
@@ -183,7 +184,7 @@ func handleInitialGameState(game *Game, initialState api.GameFullGameState) erro
 	return nil
 }
 
-func handleGameUpdate(game *Game, update api.GameStateGameState) error {
+func handleGameUpdate(game *Game, update lichess.GameStateGameState) error {
 	game.Moves = []string{}
 	if update.Moves != "" {
 		game.Moves = strings.Split(update.Moves, " ")
@@ -192,7 +193,7 @@ func handleGameUpdate(game *Game, update api.GameStateGameState) error {
 	return nil
 }
 
-func handleChatEvent(game *Game, chatEvent api.ChatLineGameState) error {
+func handleChatEvent(game *Game, chatEvent lichess.ChatLineGameState) error {
 	log.Printf("bot: Received chat: %s", chatEvent.Text)
 
 	return nil
@@ -233,7 +234,7 @@ func makeMove(state *State, game *Game) error {
 		return err
 	}
 
-	move, err := Search(board)
+	move, err := engine.Search(board)
 	if err != nil {
 		return err
 	}

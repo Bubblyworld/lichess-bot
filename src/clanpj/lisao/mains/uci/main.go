@@ -10,8 +10,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
 	dragon "github.com/dylhunn/dragontoothmg"
-	lisao "guypj/lichess/bot"
+
+	"clanpj/lisao/engine"
 )
 
 var VersionString = "0.0f Pikachu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
@@ -208,7 +210,7 @@ func uciLoop() {
 			if strings.ToLower(posScanner.Text()) == "startpos" {
 				board = dragon.ParseFen(dragon.Startpos)
 				//search.HistoryMap[board.Hash()]++ // record that this state has occurred
-				posScanner.Scan()                 // advance the scanner to leave it in a consistent state
+				posScanner.Scan() // advance the scanner to leave it in a consistent state
 			} else if strings.ToLower(posScanner.Text()) == "fen" {
 				fenstr := ""
 				for posScanner.Scan() && strings.ToLower(posScanner.Text()) != "moves" {
@@ -262,12 +264,12 @@ func uciLoop() {
 // TODO - plumb timing and halt stuff properly
 func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 	fmt.Println("info searching...")
-	
+
 	// Ignore timing and just call the fixed depth search
-	bestMove, _ := lisao.Search(board)
+	bestMove, _ := engine.Search(board)
 
 	fmt.Println("info got best move", &bestMove)
-	
+
 	// Wait for the stop signal and print the result
 	//*stop = <-halt
 	fmt.Println("bestmove", &bestMove)

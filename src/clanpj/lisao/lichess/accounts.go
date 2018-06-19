@@ -1,4 +1,4 @@
-package api
+package lichess
 
 type Account struct {
 	ID       string

@@ -1,4 +1,4 @@
-package api
+package lichess
 
 import (
 	"encoding/json"

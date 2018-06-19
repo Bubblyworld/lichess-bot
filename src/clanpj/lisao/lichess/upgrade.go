@@ -1,4 +1,4 @@
-package api
+package lichess
 
 func (lc *LichessClient) UpgradeAccount() error {
 	req, err := lc.newRequest("POST", "/api/bot/account/upgrade", nil)

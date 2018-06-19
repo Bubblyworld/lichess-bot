@@ -1,4 +1,4 @@
-package api
+package lichess
 
 type User struct {
 	ID     string
