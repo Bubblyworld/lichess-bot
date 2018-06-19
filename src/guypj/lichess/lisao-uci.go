@@ -14,7 +14,7 @@ import (
 	lisao "guypj/lichess/bot"
 )
 
-var VersionString = "0.0d Pikachu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0e Pikachu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -266,11 +266,11 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 	// Ignore timing and just call the fixed depth search
 	bestMove, _ := lisao.Search(board)
 
-	fmt.Println("info got best move", bestMove)
+	fmt.Println("info got best move", &bestMove)
 	
 	// Wait for the stop signal and print the result
 	//*stop = <-halt
-	fmt.Println("bestmove", bestMove)
+	fmt.Println("bestmove", &bestMove)
 }
 
 // After a certain period of time, sends a signal to halt the search, unless it has already been sent.
