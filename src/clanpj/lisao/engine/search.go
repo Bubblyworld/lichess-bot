@@ -9,7 +9,7 @@ import (
 const NoMove dragon.Move = 0
 
 func Search(board *dragon.Board) (dragon.Move, error) {
-	bestMove, _ /*eval*/ := search(board, 4)
+	bestMove, _ /*eval*/ := search(board, /*depthToGo*/4, /*depthFromRoot*/0)
 
 	if bestMove == NoMove {
 		return NoMove, errors.New("bot: no legal move found in search")
@@ -22,10 +22,10 @@ func Search(board *dragon.Board) (dragon.Move, error) {
 
 // search returns the best eval attainable through minmax from the given
 // position, along with the move leading to the principal variation.
-func search(board *dragon.Board, depth int) (dragon.Move, EvalCp) {
+func search(board *dragon.Board, depthToGo int, depthFromRoot int) (dragon.Move, EvalCp) {
 
 	// Ignore mate to avoid generating moves at all leaf nodes
-	if depth <= 0 {
+	if depthToGo <= 0 {
 		return NoMove, Evaluate(board)
 	}
 	
@@ -36,12 +36,12 @@ func search(board *dragon.Board, depth int) (dragon.Move, EvalCp) {
 	// in the second case it's stalemate and therefore a draw.
 	if len(legalMoves) == 0 {
 		if board.OurKingInCheck() {
-			// checkmate!
+			// checkmate - closer to root is better
 			if board.Wtomove {
-				return NoMove, BlackCheckMateEval
+				return NoMove, BlackCheckMateEval + EvalCp(depthFromRoot)
 			}
 			
-			return NoMove, WhiteCheckMateEval
+			return NoMove, WhiteCheckMateEval - EvalCp(depthFromRoot)
 		}
 		// stalemate
 		return NoMove, DrawEval
@@ -56,9 +56,9 @@ func search(board *dragon.Board, depth int) (dragon.Move, EvalCp) {
 	}
 
 	for _, move := range legalMoves {
-		unapply := board.Apply(move)
-		_, eval := search(board, depth-1)
-		unapply()
+		moveInfo := board.Apply2(move)
+		_, eval := search(board, depthToGo-1, depthFromRoot+1)
+		moveInfo.Unapply()
 
 		//fmt.Printf("         move %6s eval %3d\n", move.String(), eval)
 
