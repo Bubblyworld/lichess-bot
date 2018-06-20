@@ -23,12 +23,30 @@ func Search(board *dragon.Board) (dragon.Move, error) {
 // search returns the best eval attainable through minmax from the given
 // position, along with the move leading to the principal variation.
 func search(board *dragon.Board, depth int) (dragon.Move, EvalCp) {
+
+	// Ignore mate to avoid generating moves at all leaf nodes
+	if depth <= 0 {
+		return NoMove, Evaluate(board)
+	}
+	
 	legalMoves := board.GenerateLegalMoves()
 
-	if depth <= 0 || len(legalMoves) == 0 {
-		return NoMove, Evaluate(board, legalMoves)
+	// If there are no legal moves, there are two possibilities - either our king
+	// is in check, or it isn't. In the first case it's mate and we've lost, and
+	// in the second case it's stalemate and therefore a draw.
+	if len(legalMoves) == 0 {
+		if board.OurKingInCheck() {
+			// checkmate!
+			if board.Wtomove {
+				return NoMove, BlackCheckMateEval
+			}
+			
+			return NoMove, WhiteCheckMateEval
+		}
+		// stalemate
+		return NoMove, DrawEval
 	}
-
+	
 	//fmt.Printf("Eval: %3.2f\n", Evaluate(board, legalMoves))
 
 	var bestMove dragon.Move

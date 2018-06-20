@@ -93,19 +93,8 @@ var KingEndgamePosVals = []int8{
 	-30, -20, -10, 0, 0, -10, -20, -30,
 	-50, -40, -30, -20, -20, -30, -40, -50}
 
-func Evaluate(board *dragon.Board, legalMoves []dragon.Move) EvalCp {
-	if isStalemate(board, legalMoves) {
-		return DrawEval
-	}
-
-	if isMate(board, legalMoves) {
-		if board.Wtomove {
-			return BlackCheckMateEval
-		}
-
-		return WhiteCheckMateEval
-	}
-
+// Static eval only - no mate checks
+func Evaluate(board *dragon.Board) EvalCp {
 	whitePiecesVal := PiecesVal(&board.White)
 	blackPiecesVal := PiecesVal(&board.Black)
 
@@ -186,13 +175,3 @@ func PieceTypePiecesPosVal(bitmask uint64, isWhite bool, piecePosVals []int8) Ev
 	return eval
 }
 
-// If there are no legal moves, there are two possibilities - either our king
-// is in check, or it isn't. In the first case it's mate and we've lost, and
-// in the second case it's stalemate and therefore a draw.
-func isStalemate(board *dragon.Board, legalMoves []dragon.Move) bool {
-	return len(legalMoves) == 0 && !board.OurKingInCheck()
-}
-
-func isMate(board *dragon.Board, legalMoves []dragon.Move) bool {
-	return len(legalMoves) == 0 && board.OurKingInCheck()
-}
