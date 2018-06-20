@@ -44,6 +44,7 @@ func (b *Board) Apply2(m Move) *MoveApplication {
 
 	moveApplication.FromPieceType = pieceType
 	moveApplication.CapturedPieceType = Nothing
+	moveApplication.IsCastling = false
 	
 	castleStatus := 0
 	var oldRookLoc, newRookLoc uint8
@@ -104,6 +105,10 @@ func (b *Board) Apply2(m Move) *MoveApplication {
 		// (Rook - 1) assumes that "Nothing" precedes "Rook" in the Piece constants list
 		b.hash ^= pieceSquareZobristC[ourPiecesPawnZobristIndex+(Rook-1)][oldRookLoc]
 		b.hash ^= pieceSquareZobristC[ourPiecesPawnZobristIndex+(Rook-1)][newRookLoc]
+
+		moveApplication.IsCastling = true
+		moveApplication.RookCastleFrom = oldRookLoc
+		moveApplication.RookCastleTo = newRookLoc
 	}
 
 	// Is this an e.p. capture? Strip the opponent pawn and reset the e.p. square
