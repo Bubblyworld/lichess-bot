@@ -214,5 +214,8 @@ type MoveApplication struct {
 	ToPieceType       Piece // Different from fromPieceType only for promotions
 	CapturedPieceType Piece // Nothing if this is not a capture
 	CaptureLocation   uint8
+	IsCastling        bool
+	RookCastleFrom    uint8 // Only valid if IsCastling
+	RookCastleTo      uint8 // Only valid if IsCastling
 }
 

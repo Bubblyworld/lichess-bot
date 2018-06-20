@@ -2,6 +2,8 @@ package engine
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
 	dragon "github.com/dylhunn/dragontoothmg"
 )
@@ -24,7 +26,7 @@ const CheckEval = true
 
 // search returns the best eval attainable through minmax from the given
 // position, along with the move leading to the principal variation.
-func search(board *dragon.Board, depthToGo int, depthFromRoot int, eval EvalCp) (dragon.Move, EvalCp) {
+func search(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval EvalCp) (dragon.Move, EvalCp) {
 
 	// Ignore mate to avoid generating moves at all leaf nodes
 	if depthToGo <= 0 {
@@ -59,9 +61,16 @@ func search(board *dragon.Board, depthToGo int, depthFromRoot int, eval EvalCp) 
 
 	for _, move := range legalMoves {
 		moveInfo := board.Apply2(move)
-		_, eval := search(board, depthToGo-1, depthFromRoot+1, StaticEval(board))
+		newStaticEval := StaticEval(board)
+		_, eval := search(board, depthToGo-1, depthFromRoot+1, newStaticEval)
 		moveInfo.Unapply()
 
+		newStaticEval2 := staticEval + EvalDelta(move, moveInfo, board.Wtomove)
+
+		if newStaticEval != newStaticEval2 {
+			fmt.Printf("info %s move %s eval %4d eval2 %4d\n", board.ToFen(), &move, newStaticEval, newStaticEval2)
+			time.Sleep(time.Duration(1) * time.Hour)
+		}
 		//fmt.Printf("         move %6s eval %3d\n", move.String(), eval)
 
 		// If we're white, we try to maximise our eval. If we're black, we try to

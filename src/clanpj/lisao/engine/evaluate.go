@@ -205,19 +205,33 @@ var blackPiecePosVals = [7]*[64]int8{
 	&blackQueenPosVals,
 	&blackKingPosVals}
 
-// Eval delta due to a move
-// func EvalDelta(move dragon.Move, moveInfo *dragon.MoveApplication, isWhiteMove bool) EvalCp {
-// 	fromDelta := pieceVals[moveInfo.FromPieceType] + piecePosVals[moveInfo.FromPieceType][move.From()]
-// 	toDelta := pieceVals[moveInfo.ToPieceType] + piecePosVals[moveInfo.ToPieceType][move.To()]
-// 	captureDelta := pieceVals[moveInfo.CapturedPieceType] + piecePosVals[moveInfo.CapturedPieceType][moveInfo.CaptureLocation]
+// Eval delta due to a move - from white perspective
+func EvalDelta(move dragon.Move, moveInfo *dragon.MoveApplication, isWhiteMove bool) EvalCp {
+	myPiecePosVals := blackPiecePosVals
+	yourPiecePosVals := whitePiecePosVals
+	if isWhiteMove {
+		myPiecePosVals = whitePiecePosVals
+		yourPiecePosVals = blackPiecePosVals
+	}
+	
+	fromEval := pieceVals[moveInfo.FromPieceType] + EvalCp(myPiecePosVals[moveInfo.FromPieceType][move.From()])
+	toEval := pieceVals[moveInfo.ToPieceType] + EvalCp(myPiecePosVals[moveInfo.ToPieceType][move.To()])
+	captureEval := pieceVals[moveInfo.CapturedPieceType] + EvalCp(yourPiecePosVals[moveInfo.CapturedPieceType][moveInfo.CaptureLocation])
 
-// 	var castlingRookDelta EvalCp = 0
-// 	if moveInfo.IsCastling {
-// 		castlingRookDelta = RookPosVals
-// 	}
+	var castlingRookDelta EvalCp = 0
+	if moveInfo.IsCastling {
+		myRookPosVals := myPiecePosVals[dragon.Rook]
+		castlingRookDelta = EvalCp(myRookPosVals[moveInfo.RookCastleTo] - myRookPosVals[moveInfo.RookCastleFrom])
+	}
 
-// 	return evalDelta
-// }
+	evalDelta := toEval - fromEval + captureEval + castlingRookDelta
+
+	if !isWhiteMove {
+		evalDelta = -evalDelta
+	}
+
+	return evalDelta
+}
 
 // Static eval only - no mate checks - from white perspective
 func StaticEval(board *dragon.Board) EvalCp {
