@@ -11,7 +11,7 @@ import (
 const NoMove dragon.Move = 0
 
 func Search(board *dragon.Board) (dragon.Move, error) {
-	bestMove, _ /*eval*/ := search(board, /*depthToGo*/4, /*depthFromRoot*/0, StaticEval(board))
+	bestMove, _ /*eval*/ := search(board, /*depthToGo*/5, /*depthFromRoot*/0, StaticEval(board))
 
 	if bestMove == NoMove {
 		return NoMove, errors.New("bot: no legal move found in search")
