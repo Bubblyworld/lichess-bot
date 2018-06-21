@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/bits"
 
-	dragon "github.com/dylhunn/dragontoothmg"
+	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
 // Eval in centi-pawns, i.e. 100 === 1 pawn

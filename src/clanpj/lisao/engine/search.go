@@ -5,7 +5,7 @@ import (
 	// "fmt"
 	// "time"
 
-	dragon "github.com/dylhunn/dragontoothmg"
+	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
 const NoMove dragon.Move = 0

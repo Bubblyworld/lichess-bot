@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	dragon "github.com/dylhunn/dragontoothmg"
+	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
 var whiteInCheckmate = "rnb1kbnr/pppp1ppp/4p3/8/5PPq/8/PPPPP2P/RNBQKBNR w KQkq - 1 3"
