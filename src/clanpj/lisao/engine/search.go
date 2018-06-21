@@ -2,8 +2,8 @@ package engine
 
 import (
 	"errors"
-	"fmt"
-	"time"
+	//"fmt"
+	//"time"
 
 	dragon "github.com/dylhunn/dragontoothmg"
 )
@@ -28,11 +28,6 @@ const CheckEval = true
 // position, along with the move leading to the principal variation.
 func search(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval EvalCp) (dragon.Move, EvalCp) {
 
-	// Ignore mate to avoid generating moves at all leaf nodes
-	if depthToGo <= 0 {
-		return NoMove, StaticEval(board)
-	}
-	
 	legalMoves := board.GenerateLegalMoves()
 
 	// If there are no legal moves, there are two possibilities - either our king
@@ -53,29 +48,42 @@ func search(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval Ev
 	
 	//fmt.Printf("Eval: %3.2f\n", StaticEval(board, legalMoves))
 
+	isWhiteMove := board.Wtomove
 	var bestMove dragon.Move
 	var bestEval EvalCp = WhiteCheckMateEval
-	if board.Wtomove {
+	if isWhiteMove {
 		bestEval = BlackCheckMateEval
 	}
 
 	for _, move := range legalMoves {
+		// Make the move
 		moveInfo := board.Apply2(move)
-		newStaticEval := StaticEval(board)
-		_, eval := search(board, depthToGo-1, depthFromRoot+1, newStaticEval)
+
+		newStaticEval := staticEval + EvalDelta(move, moveInfo, isWhiteMove)
+		// newStaticEval2 := StaticEval(board)
+
+		// Get the (deep) eval
+		var eval EvalCp
+		if depthToGo <= 1 {
+			// Ignore mate check to avoid generating moves at all leaf nodes
+			eval = newStaticEval
+		} else {
+			_, eval = search(board, depthToGo-1, depthFromRoot+1, newStaticEval)
+		}
+
+		// Take back the move
 		moveInfo.Unapply()
 
-		newStaticEval2 := staticEval + EvalDelta(move, moveInfo, board.Wtomove)
 
-		if newStaticEval != newStaticEval2 {
-			fmt.Printf("info %s move %s eval %4d eval2 %4d\n", board.ToFen(), &move, newStaticEval, newStaticEval2)
-			time.Sleep(time.Duration(1) * time.Hour)
-		}
+		// if newStaticEval != newStaticEval2 {
+		// 	fmt.Printf("info %s move %s eval %4d eval2 %4d\n", board.ToFen(), &move, newStaticEval, newStaticEval2)
+		// 	time.Sleep(time.Duration(1) * time.Hour)
+		// }
 		//fmt.Printf("         move %6s eval %3d\n", move.String(), eval)
 
 		// If we're white, we try to maximise our eval. If we're black, we try to
 		// minimise our eval.
-		if board.Wtomove {
+		if isWhiteMove {
 			if eval >= bestEval {
 				bestEval, bestMove = eval, move
 			}

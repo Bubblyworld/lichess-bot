@@ -16,7 +16,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0k Pikachu 1" + "CPU 5ply " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0l Pikachu 1" + "CPU 5ply " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
