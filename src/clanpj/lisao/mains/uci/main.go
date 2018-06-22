@@ -292,14 +292,18 @@ func uciLoop() {
 // Prints the results (bestmove). TODO PV, stats
 // TODO - plumb timing and halt stuff properly
 func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
-	fmt.Println("info searching...")
-
 	// Ignore timing and just call the fixed depth search
-	bestMove, _ := engine.Search(board)
+	bestMove, eval, _ := engine.Search(board)
 
-	fmt.Println("info got best move", &bestMove)
+	// Eval is expected from the engine's perspective, but we generate it from white's perspective
+	if !board.Wtomove {
+		eval = -eval
+	}
+
+	fmt.Println("info score cp", eval, "depth", engine.SearchDepth, "pv", &bestMove)
 
 	// Wait for the stop signal and print the result
+	// TODO do this properly
 	//*stop = <-halt
 	fmt.Println("bestmove", &bestMove)
 }
@@ -311,9 +315,8 @@ func uciSearchTimeout(halt chan<- bool, ms int, alreadyStopped *bool) {
 	if ms == 0 {
 		return
 	}
-	fmt.Printf("info sleeping for %d ms\n", ms)
+	// TODO do this properly
 	time.Sleep(time.Duration(ms) * time.Millisecond)
-	fmt.Printf("info woke after %d ms\n", ms)
 	if !(*alreadyStopped) { // don't send the halt signal if the search has already been stopped
 		halt <- true
 	}

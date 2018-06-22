@@ -35,25 +35,26 @@ func SearchAlgorithmString() string {
 
 const NoMove dragon.Move = 0
 
-func Search(board *dragon.Board) (dragon.Move, error) {
+func Search(board *dragon.Board) (dragon.Move, EvalCp, error) {
 	var bestMove = NoMove
+	var eval EvalCp = 0
 
 	switch SearchAlgorithm {
 	case MiniMax:
-		bestMove, _ = minimax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, StaticEval(board))
+		bestMove, eval = minimax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, StaticEval(board))
 
 	case AlphaBeta:
-		bestMove, _ = alphabeta(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, StaticEval(board), NoMove)
+		bestMove, eval = alphabeta(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, StaticEval(board), NoMove)
 
 	default:
-		return NoMove, errors.New("bot: unrecognised search algorithm")
+		return NoMove, 0, errors.New("bot: unrecognised search algorithm")
 	}
 
 	if bestMove == NoMove {
-		return NoMove, errors.New("bot: no legal move found in search")
+		return NoMove, 0, errors.New("bot: no legal move found in search")
 	}
 
-	return bestMove, nil
+	return bestMove, eval, nil
 }
 
 // Return the eval for stalemate or checkmate from white perspective.
