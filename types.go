@@ -34,6 +34,10 @@ func (b *Board) Hash() uint64 {
 	return b.hash
 }
 
+func (b *Board) Enpassant() uint8 {
+	return b.enpassant
+}
+
 // Castle rights helpers. Data stored inside, from LSB:
 // 1 bit: White castle queenside
 // 1 bit: White castle kingside

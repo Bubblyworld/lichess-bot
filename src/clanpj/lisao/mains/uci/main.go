@@ -16,7 +16,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0r Pichu 1" + "CPU AB 7ply " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0t Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -37,10 +37,12 @@ func uciLoop() {
 		case "uci":
 			fmt.Println("id name Lisao", VersionString)
 			fmt.Println("id author Clan PJ")
-			// fmt.Println("option name Hash type spin default", transtable.DefaultTtableSize, "min 8 max 65536")
-			// fmt.Println("option name SearchThreads type spin default", search.DefaultSearchThreads, "min 1 max 128")
-			// fmt.Println("option name DrawVal_Contempt_Centipawns type spin default",
-			// 	eval.DefaultDrawScore, "min", search.NegInf, "max", search.PosInf)
+			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var AlphaBeta")
+			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
+			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
+			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
+			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
+			fmt.Println("option name UseKillerMove type check default", engine.UseKillerMove)
 			fmt.Println("uciok")
 		case "isready":
 			fmt.Println("readyok")
@@ -57,30 +59,57 @@ func uciLoop() {
 				continue
 			}
 			switch strings.ToLower(tokens[2]) {
-			// case "hash":
-			// 	res, err := strconv.Atoi(tokens[4])
-			// 	if err != nil {
-			// 		fmt.Println("info string Hash value is not an int (", err, ")")
-			// 		continue
-			// 	}
-			// 	fmt.Println("info string Changed table size. Clearing and reloading table...")
-			// 	transtable.DefaultTtableSize = res // reset the size and reload the table
-			// 	transtable.Initialize(transtable.DefaultTtableSize)
-			// case "searchthreads":
-			// 	res, err := strconv.Atoi(tokens[4])
-			// 	if err != nil {
-			// 		fmt.Println("info string Number of threads is not an int (", err, ")")
-			// 		continue
-			// 	}
-			// 	search.DefaultSearchThreads = res
-			// case "DrawVal_Contempt_Centipawns":
-			// 	res, err := strconv.Atoi(tokens[4])
-			// 	if err != nil {
-			// 		fmt.Println("info string DrawVal_Contempt_Centipawns is not an int (", err, ")")
-			// 		continue
-			// 	}
-			// 	fmt.Println("info string Changed contempt factor to", res, "centipawns.")
-			// 	eval.DefaultDrawScore = int16(res)
+			case "searchdepth":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string SearchDepth value is not an int (", err, ")")
+					continue
+				}
+				engine.SearchDepth = res
+				fmt.Println("info string Search depth changes to", res)
+			case "qsearchdepth":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string QSearchDepth value is not an int (", err, ")")
+					continue
+				}
+				engine.QSearchDepth = res
+			case "searchalgorithm":
+				switch strings.ToLower(tokens[4]) {
+				case "minimax":
+					engine.SearchAlgorithm = engine.MiniMax
+				case "alphabeta":
+					engine.SearchAlgorithm = engine.AlphaBeta
+				default:
+					fmt.Println("info string Unrecognised Search Algorithm:", tokens[4])
+				}
+			case "useqsearch":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQSearch = true
+				case "false":
+					engine.UseQSearch = false
+				default:
+					fmt.Println("info string Unrecognised UseQSearch option:", tokens[4])
+				}
+			case "usedeltaeval":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseDeltaEval = true
+				case "false":
+					engine.UseDeltaEval = false
+				default:
+					fmt.Println("info string Unrecognised UseDeltaEval option:", tokens[4])
+				}
+			case "usekillermove":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseKillerMove = true
+				case "false":
+					engine.UseKillerMove = false
+				default:
+					fmt.Println("info string Unrecognised UseKillerMove option:", tokens[4])
+				}
 			default:
 				fmt.Println("info string Unknown UCI option", tokens[2])
 			}
