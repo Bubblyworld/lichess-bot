@@ -16,7 +16,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0t Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0u Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -42,7 +42,8 @@ func uciLoop() {
 			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
 			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
-			fmt.Println("option name UseKillerMove type check default", engine.UseKillerMove)
+			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
+			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
 			fmt.Println("uciok")
 		case "isready":
 			fmt.Println("readyok")
@@ -101,14 +102,23 @@ func uciLoop() {
 				default:
 					fmt.Println("info string Unrecognised UseDeltaEval option:", tokens[4])
 				}
-			case "usekillermove":
+			case "usekillermoves":
 				switch strings.ToLower(tokens[4]) {
 				case "true":
-					engine.UseKillerMove = true
+					engine.UseKillerMoves = true
 				case "false":
-					engine.UseKillerMove = false
+					engine.UseKillerMoves = false
 				default:
-					fmt.Println("info string Unrecognised UseKillerMove option:", tokens[4])
+					fmt.Println("info string Unrecognised UseKillerMoves option:", tokens[4])
+				}
+			case "usedeepkillermoves":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseDeepKillerMoves = true
+				case "false":
+					engine.UseDeepKillerMoves = false
+				default:
+					fmt.Println("info string Unrecognised UseDeepKillerMoves option:", tokens[4])
 				}
 			default:
 				fmt.Println("info string Unknown UCI option", tokens[2])
@@ -293,14 +303,16 @@ func uciLoop() {
 // TODO - plumb timing and halt stuff properly
 func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 	// Ignore timing and just call the fixed depth search
-	bestMove, eval, _ := engine.Search(board)
+	bestMove, eval, stats, _ := engine.Search(board)
 
 	// Eval is expected from the engine's perspective, but we generate it from white's perspective
 	if !board.Wtomove {
 		eval = -eval
 	}
 
-	fmt.Println("info score cp", eval, "depth", engine.SearchDepth, "pv", &bestMove)
+	fmt.Println("info string nodes", stats.Nodes, "mates", stats.Mates, "nonleafs", stats.NonLeafs, "killers", stats.Killers, "killercuts", stats.KillerCuts, "deepkillers", stats.DeepKillers, "deepkillercuts", stats.DeepKillerCuts)
+	fmt.Println("info string qnodes", stats.QNodes, "qmates", stats.QMates, "qnonleafs", stats.QNonLeafs, "qpatcuts", stats.QPatCuts, "qkillers", stats.QKillers, "qkiller-cuts", stats.QKillerCuts, "qpats", stats.QPats, "qprunes", stats.QPrunes)
+	fmt.Println("info depth", engine.SearchDepth, "score cp", eval, "nodes", stats.Nodes, "pv", &bestMove)
 
 	// Wait for the stop signal and print the result
 	// TODO do this properly
