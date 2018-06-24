@@ -46,7 +46,7 @@ func TestEvaluate(t *testing.T) {
 		board := dragon.ParseFen(fen)
 		legalMoves := board.GenerateLegalMoves()
 
-		score := Evaluate(board, legalMoves)
+		score := StaticEval(board, legalMoves)
 		if score != expectedScore {
 			t.Errorf("Expected evaluation of %f, got %f for %s.", expectedScore,
 				score, fen)

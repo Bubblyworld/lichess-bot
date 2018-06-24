@@ -16,7 +16,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0r Pichu 1" + "CPU AB 4ply " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0w Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -37,10 +37,13 @@ func uciLoop() {
 		case "uci":
 			fmt.Println("id name Lisao", VersionString)
 			fmt.Println("id author Clan PJ")
-			// fmt.Println("option name Hash type spin default", transtable.DefaultTtableSize, "min 8 max 65536")
-			// fmt.Println("option name SearchThreads type spin default", search.DefaultSearchThreads, "min 1 max 128")
-			// fmt.Println("option name DrawVal_Contempt_Centipawns type spin default",
-			// 	eval.DefaultDrawScore, "min", search.NegInf, "max", search.PosInf)
+			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var AlphaBeta")
+			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
+			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
+			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
+			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
+			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
+			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
 			fmt.Println("uciok")
 		case "isready":
 			fmt.Println("readyok")
@@ -57,30 +60,66 @@ func uciLoop() {
 				continue
 			}
 			switch strings.ToLower(tokens[2]) {
-			// case "hash":
-			// 	res, err := strconv.Atoi(tokens[4])
-			// 	if err != nil {
-			// 		fmt.Println("info string Hash value is not an int (", err, ")")
-			// 		continue
-			// 	}
-			// 	fmt.Println("info string Changed table size. Clearing and reloading table...")
-			// 	transtable.DefaultTtableSize = res // reset the size and reload the table
-			// 	transtable.Initialize(transtable.DefaultTtableSize)
-			// case "searchthreads":
-			// 	res, err := strconv.Atoi(tokens[4])
-			// 	if err != nil {
-			// 		fmt.Println("info string Number of threads is not an int (", err, ")")
-			// 		continue
-			// 	}
-			// 	search.DefaultSearchThreads = res
-			// case "DrawVal_Contempt_Centipawns":
-			// 	res, err := strconv.Atoi(tokens[4])
-			// 	if err != nil {
-			// 		fmt.Println("info string DrawVal_Contempt_Centipawns is not an int (", err, ")")
-			// 		continue
-			// 	}
-			// 	fmt.Println("info string Changed contempt factor to", res, "centipawns.")
-			// 	eval.DefaultDrawScore = int16(res)
+			case "searchdepth":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string SearchDepth value is not an int (", err, ")")
+					continue
+				}
+				engine.SearchDepth = res
+				fmt.Println("info string Search depth changes to", res)
+			case "qsearchdepth":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string QSearchDepth value is not an int (", err, ")")
+					continue
+				}
+				engine.QSearchDepth = res
+			case "searchalgorithm":
+				switch strings.ToLower(tokens[4]) {
+				case "minimax":
+					engine.SearchAlgorithm = engine.MiniMax
+				case "alphabeta":
+					engine.SearchAlgorithm = engine.AlphaBeta
+				default:
+					fmt.Println("info string Unrecognised Search Algorithm:", tokens[4])
+				}
+			case "useqsearch":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQSearch = true
+				case "false":
+					engine.UseQSearch = false
+				default:
+					fmt.Println("info string Unrecognised UseQSearch option:", tokens[4])
+				}
+			case "usedeltaeval":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseDeltaEval = true
+				case "false":
+					engine.UseDeltaEval = false
+				default:
+					fmt.Println("info string Unrecognised UseDeltaEval option:", tokens[4])
+				}
+			case "usekillermoves":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseKillerMoves = true
+				case "false":
+					engine.UseKillerMoves = false
+				default:
+					fmt.Println("info string Unrecognised UseKillerMoves option:", tokens[4])
+				}
+			case "usedeepkillermoves":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseDeepKillerMoves = true
+				case "false":
+					engine.UseDeepKillerMoves = false
+				default:
+					fmt.Println("info string Unrecognised UseDeepKillerMoves option:", tokens[4])
+				}
 			default:
 				fmt.Println("info string Unknown UCI option", tokens[2])
 			}
@@ -263,14 +302,20 @@ func uciLoop() {
 // Prints the results (bestmove). TODO PV, stats
 // TODO - plumb timing and halt stuff properly
 func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
-	fmt.Println("info searching...")
-
 	// Ignore timing and just call the fixed depth search
-	bestMove, _ := engine.Search(board)
+	bestMove, eval, stats, _ := engine.Search(board)
 
-	fmt.Println("info got best move", &bestMove)
+	// Eval is expected from the engine's perspective, but we generate it from white's perspective
+	if !board.Wtomove {
+		eval = -eval
+	}
+
+	fmt.Println("info string nodes", stats.Nodes, "mates", stats.Mates, "nonleafs", stats.NonLeafs, "killers", stats.Killers, "killercuts", stats.KillerCuts, "deepkillers", stats.DeepKillers, "deepkillercuts", stats.DeepKillerCuts)
+	fmt.Println("info string qnodes", stats.QNodes, "qmates", stats.QMates, "qnonleafs", stats.QNonLeafs, "qpatcuts", stats.QPatCuts, "qkillers", stats.QKillers, "qkiller-cuts", stats.QKillerCuts, "qdeepkillers", stats.QDeepKillers, "qdeepkillercuts", stats.QDeepKillerCuts, "qpats", stats.QPats, "qshallows", stats.QShallows, "qprunes", stats.QPrunes)
+	fmt.Println("info depth", engine.SearchDepth, "score cp", eval, "nodes", stats.Nodes, "pv", &bestMove)
 
 	// Wait for the stop signal and print the result
+	// TODO do this properly
 	//*stop = <-halt
 	fmt.Println("bestmove", &bestMove)
 }
@@ -282,9 +327,8 @@ func uciSearchTimeout(halt chan<- bool, ms int, alreadyStopped *bool) {
 	if ms == 0 {
 		return
 	}
-	fmt.Printf("info sleeping for %d ms\n", ms)
+	// TODO do this properly
 	time.Sleep(time.Duration(ms) * time.Millisecond)
-	fmt.Printf("info woke after %d ms\n", ms)
 	if !(*alreadyStopped) { // don't send the halt signal if the search has already been stopped
 		halt <- true
 	}
