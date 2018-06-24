@@ -16,7 +16,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0w Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0x Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -37,7 +37,7 @@ func uciLoop() {
 		case "uci":
 			fmt.Println("id name Lisao", VersionString)
 			fmt.Println("id author Clan PJ")
-			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var AlphaBeta")
+			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var NegaMax var AlphaBeta")
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
@@ -79,6 +79,8 @@ func uciLoop() {
 				switch strings.ToLower(tokens[4]) {
 				case "minimax":
 					engine.SearchAlgorithm = engine.MiniMax
+				case "negamax":
+					engine.SearchAlgorithm = engine.NegaMax
 				case "alphabeta":
 					engine.SearchAlgorithm = engine.AlphaBeta
 				default:

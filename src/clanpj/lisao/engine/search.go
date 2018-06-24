@@ -34,12 +34,13 @@ type SearchStatsT struct {
 type SearchAlgorithmT int
 const (
 	MiniMax SearchAlgorithmT = iota
+	NegaMax
 	AlphaBeta
 )
-var SearchAlgorithm = AlphaBeta
-var SearchDepth = 6
+var SearchAlgorithm = NegaMax
+var SearchDepth = 4
 var UseQSearch = true
-var QSearchDepth = 6
+var QSearchDepth = 4
 var UseKillerMoves = true
 var UseDeepKillerMoves = true
 var UseDeltaEval = true
@@ -48,6 +49,8 @@ func SearchAlgorithmString() string {
 	switch SearchAlgorithm {
 	case MiniMax:
 		return "MiniMax"
+	case NegaMax:
+		return "NegaMax"
 	case AlphaBeta:
 		return "AlphaBeta"
 	default:
@@ -59,15 +62,29 @@ func SearchAlgorithmString() string {
 const MaxDepth = 1024
 const NoMove dragon.Move = 0
 
+// Return eval from white's perspective, and the best move plus some search stats
 func Search(board *dragon.Board) (dragon.Move, EvalCp, SearchStatsT, error) {
 	var deepKillers [MaxDepth]dragon.Move
 	var searchStats SearchStatsT
 	var bestMove = NoMove
+	var staticEval = StaticEval(board)
+	var staticNegaEval = staticEval
+	if !board.Wtomove {
+		staticNegaEval = -staticEval
+	}
 	var eval EvalCp = 0
 
 	switch SearchAlgorithm {
 	case MiniMax:
-		bestMove, eval = minimax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, StaticEval(board), &searchStats)
+		bestMove, eval = minimax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, staticEval, &searchStats)
+
+	case NegaMax:
+		var negaEval EvalCp
+		bestMove, negaEval = negamax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, staticNegaEval, &searchStats)
+		eval = negaEval
+		if !board.Wtomove {
+			eval = -negaEval
+		}
 
 	case AlphaBeta:
 		bestMove, eval = alphabeta(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, StaticEval(board), NoMove, deepKillers[:], &searchStats)
@@ -98,19 +115,42 @@ func mateEval(board *dragon.Board, depthFromRoot int) EvalCp {
 	return DrawEval
 }
 
-// Return the new static eval - either by fast delta, or by full evaluation, depending on configuration
-func getStaticEval(board* dragon.Board, oldStaticEval EvalCp, move dragon.Move, moveInfo *dragon.MoveApplication, isWhiteMove bool) EvalCp {
+// Return the eval for stalemate or checkmate from curent mover's perspective
+// Only valid if there are no legal moves.
+func negaMateEval(board *dragon.Board, depthFromRoot int) EvalCp {
+	if board.OurKingInCheck() {
+		// checkmate - closer to root is better
+		return YourCheckMateEval + EvalCp(depthFromRoot)
+	}
+	// stalemate
+	return DrawEval
+}
+
+// Return the new static eval from white's perspective - either by fast delta, or by full evaluation, depending on configuration
+func getStaticEval(board* dragon.Board, oldStaticEval EvalCp, move dragon.Move, moveInfo *dragon.MoveApplication) EvalCp {
 	if UseDeltaEval {
 		// Much faster
-		return oldStaticEval + EvalDelta(move, moveInfo, isWhiteMove)
+		return oldStaticEval + EvalDelta(move, moveInfo, !board.Wtomove)
 	} else {
-		// Much more dependable :P
+		// For sanity check :P
 		return StaticEval(board)
+	}
+}
+
+// Return the new static eval from current mover's perspective - either by fast delta, or by full evaluation, depending on configuration
+func getNegaStaticEval(board* dragon.Board, oldNegaStaticEval EvalCp, move dragon.Move, moveInfo *dragon.MoveApplication) EvalCp {
+	if UseDeltaEval {
+		// Much faster
+		return oldNegaStaticEval + NegaEvalDelta(move, moveInfo, !board.Wtomove)
+	} else {
+		// For sanity check :P
+		return NegaStaticEval(board)
 	}
 }
 
 // Return the best eval attainable through minmax from the given
 //   position, along with the move leading to the principal variation.
+// Eval is given from white's perspective.
 func minimax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval EvalCp, stats *SearchStatsT) (dragon.Move, EvalCp) {
 
 	stats.Nodes++
@@ -136,7 +176,7 @@ func minimax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval E
 		// Make the move
 		moveInfo := board.Apply2(move)
 
-		newStaticEval := getStaticEval(board, staticEval, move, moveInfo, isWhiteMove)
+		newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
 
 		// Get the (deep) eval
 		var eval EvalCp
@@ -163,6 +203,56 @@ func minimax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval E
 			if eval < bestEval {
 				bestEval, bestMove = eval, move
 			}
+		}
+	}
+
+	return bestMove, bestEval
+}
+
+// Return the best eval attainable through negamax from the given
+//   position, along with the move leading to the principal variation.
+// Eval is given from current mover's perspective.
+func negamax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval EvalCp, stats *SearchStatsT) (dragon.Move, EvalCp) {
+
+	stats.Nodes++
+	stats.NonLeafs++
+
+	// Generate all legal moves - thanks dragontoothmg!
+	legalMoves := board.GenerateLegalMoves()
+
+	// Check for checkmate or stalemate
+	if len(legalMoves) == 0 {
+		stats.Mates++
+		return NoMove, negaMateEval(board, depthFromRoot)
+	}
+	
+	bestMove := NoMove
+	bestEval := YourCheckMateEval
+
+	for _, move := range legalMoves {
+		// Make the move
+		moveInfo := board.Apply2(move)
+
+		newNegaStaticEval := getNegaStaticEval(board, staticEval, move, moveInfo)
+
+		// Get the (deep) eval
+		var eval EvalCp
+		if depthToGo <= 1 {
+			stats.Nodes++
+			// Ignore mate check to avoid generating moves at all leaf nodes
+			eval = newNegaStaticEval
+		} else {
+			_, eval = negamax(board, depthToGo-1, depthFromRoot+1, -newNegaStaticEval, stats)
+			eval = -eval // back to our perspective
+		}
+
+		// Take back the move
+		moveInfo.Unapply()
+
+		// We try to maximise our eval.
+		// Strictly > to match alphabeta
+		if eval > bestEval {
+			bestEval, bestMove = eval, move
 		}
 	}
 
@@ -225,7 +315,7 @@ func alphabeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 			// Make the move
 			moveInfo := board.Apply2(move)
 			
-			newStaticEval := getStaticEval(board, staticEval, move, moveInfo, /*isWhiteMove*/true)
+			newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
 			
 			// Get the (deep) eval
 			var eval EvalCp
@@ -281,7 +371,7 @@ func alphabeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 			// Make the move
 			moveInfo := board.Apply2(move)
 			
-			newStaticEval := getStaticEval(board, staticEval, move, moveInfo, /*isWhiteMove*/false)
+			newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
 			
 			// Get the (deep) eval
 			var eval EvalCp
@@ -411,7 +501,7 @@ func qsearchAlphabeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 			// Make the move
 			moveInfo := board.Apply2(move)
 			
-			newStaticEval := getStaticEval(board, staticEval, move, moveInfo, /*isWhiteMove*/true)
+			newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
 			
 			// Get the (deep) eval
 			var eval EvalCp
@@ -465,7 +555,7 @@ func qsearchAlphabeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 			// Make the move
 			moveInfo := board.Apply2(move)
 			
-			newStaticEval := getStaticEval(board, staticEval, move, moveInfo, /*isWhiteMove*/false)
+			newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
 			
 			// Get the (deep) eval
 			var eval EvalCp
