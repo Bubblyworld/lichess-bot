@@ -25,6 +25,7 @@ type SearchStatsT struct {
 	QDeepKillerCuts uint64 // #nodes with deep killer move cut
 	QPats uint64           // #qnodes with stand pat best
 	QPatCuts uint64        // #qnodes with stand pat cut
+	QShallows uint64       // #qnodes where we reached full depth - i.e. likely failed to quiesce
 	QPrunes uint64         // #qnodes where we reached full depth - i.e. likely failed to quiesce
 }
 	
@@ -329,65 +330,6 @@ func alphabeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 	}
 }
 
-// Return true iff the move is an en-passant capture
-func isEnPassant(board *dragon.Board, move dragon.Move) bool {
-	myPawns := board.Black.Pawns
-	if board.Wtomove {
-		myPawns = board.White.Pawns
-	}
-
-	fromBitboard := (uint64(1) << move.From())
-
-	if (fromBitboard & myPawns) == 0 {
-		return false // not a pawn move
-	}
-
-	// This is a pawn move - check if the target square is the en-passant square
-	oldEpCaptureSquare := board.Enpassant()
-	if move.To() == oldEpCaptureSquare && oldEpCaptureSquare != 0 {
-		return true // en-passant
-	}
-
-	return false // pawn move but not en-passant
-	
-}
-
-// Return true iff the move is a (non-en-passant) capture
-func isSimpleCapture(board *dragon.Board, move dragon.Move) bool {
-	yourAll := board.White.All
-	if board.Wtomove {
-		yourAll = board.Black.All
-	}
-	toBitboard := (uint64(1) << move.To())
-
-	if (toBitboard & yourAll) == 0 {
-		return false // not a simple capture
-	}
-
-	return true // target square is occupied by opponent piece, i.e. simple capture
-}
-
-// Return false iff the given move is a capture or a promotion
-// TODO consider checks too - but currently no cheap way to tell
-func isQuietMove(board *dragon.Board, move dragon.Move) bool {
-	// Straight capture?
-	if isSimpleCapture(board, move) {
-		return false
-	}
-
-	// Pawn promotion?
-	if move.Promote() != dragon.Nothing {
-		return false
-	}
-
-	// En-passant capture?
-	if isEnPassant(board, move) {
-		return false
-	}
-
-	return true // quiet move
-}
-
 // Quiescence search - differs from full search as follows:
 //   - we only look at captures and promotions - we could/should also possibly look at check evasion, but check detection is currently expensive
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
@@ -425,13 +367,20 @@ func qsearchAlphabeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		}
 	}
 
-	// Generate all legal moves - thanks dragontoothmg!
-	legalMoves := board.GenerateLegalMoves()
+	// Generate all noisy legal moves - thanks dragontoothmg!
+	legalMoves, isInCheck := board.GenerateLegalMoves2(/*onlyCapturesPromosCheckEvasion*/true)
 
-	// Check for checkmate or stalemate
+	// No noisy mvoes
 	if len(legalMoves) == 0 {
-		stats.QMates++
-		return NoMove, mateEval(board, depthFromRoot)
+		// Check for checkmate or stalemate
+		if isInCheck {
+			stats.QMates++
+			return NoMove, mateEval(board, depthFromRoot) // TODO checks for mate again expensively
+		} else {
+			// Already quiesced - just return static eval
+			stats.QShallows++
+			return NoMove, staticEval
+		}
 	}
 
 	usingDeepKiller := false
@@ -459,11 +408,6 @@ func qsearchAlphabeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		childKiller := NoMove
 		
 		for _, move := range legalMoves {
-			// Ignore quiet moves
-			if isQuietMove(board, move) {
-				continue
-			}
-			
 			// Make the move
 			moveInfo := board.Apply2(move)
 			
@@ -518,11 +462,6 @@ func qsearchAlphabeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		childKiller := NoMove
 		
 		for _, move := range legalMoves {
-			// Ignore quiet moves
-			if isQuietMove(board, move) {
-				continue
-			}
-			
 			// Make the move
 			moveInfo := board.Apply2(move)
 			

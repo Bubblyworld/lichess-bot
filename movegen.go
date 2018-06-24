@@ -13,14 +13,16 @@ import (
 
 // The main API entrypoint. Generates all legal moves for a given board.
 func (b *Board) GenerateLegalMoves() []Move {
-	return b.GenerateLegalMoves2(false)
+	moves, _ := b.GenerateLegalMoves2(false)
+	return moves
 }
 
 
 // The main API entrypoint. Generates legal moves for a given board,
 //   either all moves (onlyCapturesPromosCheckEvasion == false), or
 //   limited to captures, promotions, and check evasion for quiescence search.
-func (b *Board) GenerateLegalMoves2(onlyCapturesPromosCheckEvasion bool) []Move {
+// Return moves, isInCheck
+func (b *Board) GenerateLegalMoves2(onlyCapturesPromosCheckEvasion bool) ([]Move, bool) {
 	moves := make([]Move, 0, kDefaultMoveListLength)
 	// First, see if we are currently in check. If we are, invoke a special check-
 	// evasion move generator.
@@ -36,7 +38,7 @@ func (b *Board) GenerateLegalMoves2(onlyCapturesPromosCheckEvasion bool) []Move 
 	kingAttackers, blockerDestinations := b.countAttacks(b.Wtomove, kingLocation, 2)
 	if kingAttackers >= 2 { // Under multiple attack, we must move the king.
 		b.kingPushes(&moves, ourPiecesPtr, everything)
-		return moves
+		return moves, true
 	}
 
 	// Several move types can work in single check, but we must block the check
@@ -52,7 +54,7 @@ func (b *Board) GenerateLegalMoves2(onlyCapturesPromosCheckEvasion bool) []Move 
 		b.bishopMoves(&moves, nonpinnedPieces, blockerDestinations)
 		b.queenMoves(&moves, nonpinnedPieces, blockerDestinations)
 		b.kingPushes(&moves, ourPiecesPtr, everything)
-		return moves
+		return moves, true
 	}
 
 	// If we're only interested in captures, then limit destinations to opponent pieces
@@ -83,7 +85,7 @@ func (b *Board) GenerateLegalMoves2(onlyCapturesPromosCheckEvasion bool) []Move 
 	b.bishopMoves(&moves, nonpinnedPieces, allowDest)
 	b.queenMoves(&moves, nonpinnedPieces, allowDest)
 	b.kingMoves(&moves, allowDest, /*includeCastling*/!onlyCapturesPromosCheckEvasion)
-	return moves
+	return moves, false
 }
 
 // Calculate the available moves for absolutely pinned pieces (pinned to the king).
