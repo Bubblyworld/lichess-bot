@@ -2,7 +2,7 @@ package engine
 
 import (
 	"errors"
-	// "fmt"
+	"fmt"
 	// "time"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
@@ -36,11 +36,12 @@ const (
 	MiniMax SearchAlgorithmT = iota
 	NegaMax
 	AlphaBeta
+	NegAlphaBeta
 )
 var SearchAlgorithm = NegaMax
-var SearchDepth = 4
+var SearchDepth = 6
 var UseQSearch = true
-var QSearchDepth = 4
+var QSearchDepth = 6
 var UseKillerMoves = true
 var UseDeepKillerMoves = true
 var UseDeltaEval = true
@@ -53,9 +54,11 @@ func SearchAlgorithmString() string {
 		return "NegaMax"
 	case AlphaBeta:
 		return "AlphaBeta"
+	case NegAlphaBeta:
+		return "NegAlphaBeta"
 	default:
-		SearchAlgorithm = AlphaBeta
-		return "AlphaBeta"
+		SearchAlgorithm = NegAlphaBeta
+		return "NegAlphaBeta"
 	}
 }
 
@@ -76,9 +79,11 @@ func Search(board *dragon.Board) (dragon.Move, EvalCp, SearchStatsT, error) {
 
 	switch SearchAlgorithm {
 	case MiniMax:
+		fmt.Println("info string Using MiniMax")
 		bestMove, eval = miniMax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, staticEval, &searchStats)
 
 	case NegaMax:
+		fmt.Println("info string Using NegaMax")
 		var negaEval EvalCp
 		bestMove, negaEval = negaMax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, staticNegaEval, &searchStats)
 		eval = negaEval
@@ -87,7 +92,17 @@ func Search(board *dragon.Board) (dragon.Move, EvalCp, SearchStatsT, error) {
 		}
 
 	case AlphaBeta:
-		bestMove, eval = alphaBeta(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, StaticEval(board), NoMove, deepKillers[:], &searchStats)
+		fmt.Println("info string Using AlphaBeta")
+		bestMove, eval = alphaBeta(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, staticEval, NoMove, deepKillers[:], &searchStats)
+
+	case NegAlphaBeta:
+		fmt.Println("info string Using NegAlphaBeta")
+		var negaEval EvalCp
+		bestMove, negaEval = negAlphaBeta(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, staticNegaEval, NoMove, deepKillers[:], &searchStats)
+		eval = negaEval
+		if !board.Wtomove {
+			eval = -negaEval
+		}
 
 	default:
 		return NoMove, 0, searchStats, errors.New("bot: unrecognised search algorithm")
@@ -212,7 +227,7 @@ func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval E
 // Return the best eval attainable through negamax from the given
 //   position, along with the move leading to the principal variation.
 // Eval is given from current mover's perspective.
-func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval EvalCp, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticNegaEval EvalCp, stats *SearchStatsT) (dragon.Move, EvalCp) {
 
 	stats.Nodes++
 	stats.NonLeafs++
@@ -233,7 +248,7 @@ func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval E
 		// Make the move
 		moveInfo := board.Apply2(move)
 
-		newNegaStaticEval := getNegaStaticEval(board, staticEval, move, moveInfo)
+		newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
 
 		// Get the (deep) eval
 		var eval EvalCp
@@ -345,7 +360,7 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 			}
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-			if beta <= alpha {
+			if alpha >= beta {
 				if bestMove == killer {
 					if usingDeepKiller {
 						stats.DeepKillerCuts++
@@ -401,7 +416,7 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 			}
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-			if beta <= alpha {
+			if alpha >= beta {
 				if bestMove == killer {
 					if usingDeepKiller {
 						stats.DeepKillerCuts++
@@ -438,7 +453,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		}
 
 		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-		if beta <= alpha {
+		if alpha >= beta {
 			stats.QPats++
 			stats.QPatCuts++
 			return NoMove, staticEval
@@ -450,7 +465,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		}
 		
 		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-		if beta <= alpha {
+		if alpha >= beta {
 			stats.QPats++
 			stats.QPatCuts++
 			return NoMove, staticEval
@@ -528,7 +543,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 			}
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-			if beta <= alpha {
+			if alpha >= beta {
 				if bestMove == killer {
 					if usingDeepKiller {
 						stats.QDeepKillerCuts++
@@ -582,7 +597,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 			}
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-			if beta <= alpha {
+			if alpha >= beta {
 				if bestMove == killer {
 					if usingDeepKiller {
 						stats.QDeepKillerCuts++
@@ -603,7 +618,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
 
 	stats.Nodes++
 	stats.NonLeafs++
@@ -634,15 +649,15 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 		}
 	}
 
-	var bestMove = NoMove
-	var bestEval EvalCp = BlackCheckMateEval
+	bestMove := NoMove
+	bestEval := BlackCheckMateEval
 	childKiller := NoMove
 		
 	for _, move := range legalMoves {
 		// Make the move
 		moveInfo := board.Apply2(move)
 		
-		newNegaStaticEval := getNegaStaticEval(board, staticEval, move, moveInfo)
+		newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
 			
 		// Get the (deep) eval
 		var eval EvalCp
@@ -674,7 +689,7 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 		}
 		
 		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-		if beta <= alpha {
+		if alpha >= beta {
 			if bestMove == killer {
 				if usingDeepKiller {
 					stats.DeepKillerCuts++
@@ -697,22 +712,22 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
 // TODO - implement more efficient generation of 'noisy' moves in dragontoothmg
 // TODO - better static eval if we bottom out without quescing, e.g. static exchange evaluation (SEE)
-func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
 
 	stats.QNodes++
 	stats.QNonLeafs++
 
 	// Stand pat - equivalent to considering the null move as a valid move.
-	// Essentially the player to move doesn't _have_ to make a capture - (we assume that there is a non-capture move available.)
-	if alpha < staticEval {
-		alpha = staticEval
+	// Essentially the player to move doesn't _have_ to make a 'noisy' move - assuming that there is a quiet move available.
+	if alpha < staticNegaEval {
+		alpha = staticNegaEval
 	}
 
 	// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-	if beta <= alpha {
+	if alpha >= beta {
 		stats.QPats++
 		stats.QPatCuts++
-		return NoMove, staticEval
+		return NoMove, staticNegaEval
 	}
 
 	// Generate all noisy legal moves
@@ -727,7 +742,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		} else {
 			// Already quiesced - just return static eval
 			stats.QShallows++
-			return NoMove, staticEval
+			return NoMove, staticNegaEval
 		}
 	}
 
@@ -757,7 +772,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		// Make the move
 		moveInfo := board.Apply2(move)
 		
-		newNegaStaticEval := getNegaStaticEval(board, staticEval, move, moveInfo)
+		newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
 		
 		// Get the (deep) eval
 		var eval EvalCp
@@ -774,7 +789,6 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		// Take back the move
 		moveInfo.Unapply()
 		
-		// We're white - maximise our eval.
 		// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 		if eval > bestEval {
 			bestEval, bestMove = eval, move
@@ -785,7 +799,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		}
 		
 		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-		if beta <= alpha {
+		if alpha >= beta {
 			if bestMove == killer {
 				if usingDeepKiller {
 					stats.QDeepKillerCuts++
