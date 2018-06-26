@@ -730,7 +730,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		}
 	} else {
 		// We're quiesced as long as all children (we visit) are quiesced.
-		isQuiesced := false
+		isQuiesced := true
 
 		// Did we break out early due to beta cut-off?
 		isBetaCutoff := false
