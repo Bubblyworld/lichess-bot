@@ -731,6 +731,9 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	} else {
 		// We're quiesced as long as all children (we visit) are quiesced.
 		isQuiesced := false
+
+		// Did we break out early due to beta cut-off?
+		isBetaCutoff := false
 		
 		// Place killer-move (or deep killer move) first if it's there
 		usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
@@ -781,12 +784,14 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 					}
 				}
 				// beta cut-off
-				deepKillers[depthFromRoot] = bestMove
-				return bestMove, bestEval, isQuiesced
+				isBetaCutoff = true
+				break
 			}
 		}
-		
-		stats.QPats++
+
+		if !isBetaCutoff {
+			stats.QPats++
+		}
 		deepKillers[depthFromRoot] = bestMove
 		
 	}
