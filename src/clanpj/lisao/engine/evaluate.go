@@ -13,6 +13,13 @@ type EvalCp int16
 const WhiteCheckMateEval EvalCp = math.MaxInt16
 const BlackCheckMateEval EvalCp = -math.MaxInt16 // don't use MinInt16 cos it's not symmetrical with MaxInt16
 
+// For NegaMax and friends this naming is more accurate
+const MyCheckMateEval EvalCp = math.MaxInt16
+const YourCheckMateEval EvalCp = -math.MaxInt16 // don't use MinInt16 cos it's not symmetrical with MaxInt16
+
+// Used to mark transposition (hash) tables entries as invalid
+const InvalidEval EvalCp = math.MinInt16
+
 const DrawEval EvalCp = 0
 
 // Piece values
@@ -205,7 +212,7 @@ var blackPiecePosVals = [7]*[64]int8{
 	&blackQueenPosVals,
 	&blackKingPosVals}
 
-// Eval delta due to a move - from white perspective
+// Eval delta due to a move - from white's perspective
 func EvalDelta(move dragon.Move, moveInfo *dragon.MoveApplication, isWhiteMove bool) EvalCp {
 	myPiecePosVals := blackPiecePosVals
 	yourPiecePosVals := whitePiecePosVals
@@ -233,7 +240,39 @@ func EvalDelta(move dragon.Move, moveInfo *dragon.MoveApplication, isWhiteMove b
 	return evalDelta
 }
 
-// Static eval only - no mate checks - from white perspective
+// Eval delta due to a move - from current mover's perspective
+func NegaEvalDelta(move dragon.Move, moveInfo *dragon.MoveApplication, isWhiteMove bool) EvalCp {
+	myPiecePosVals := blackPiecePosVals
+	yourPiecePosVals := whitePiecePosVals
+	if isWhiteMove {
+		myPiecePosVals = whitePiecePosVals
+		yourPiecePosVals = blackPiecePosVals
+	}
+	
+	fromEval := pieceVals[moveInfo.FromPieceType] + EvalCp(myPiecePosVals[moveInfo.FromPieceType][move.From()])
+	toEval := pieceVals[moveInfo.ToPieceType] + EvalCp(myPiecePosVals[moveInfo.ToPieceType][move.To()])
+	captureEval := pieceVals[moveInfo.CapturedPieceType] + EvalCp(yourPiecePosVals[moveInfo.CapturedPieceType][moveInfo.CaptureLocation])
+
+	var castlingRookDelta EvalCp = 0
+	if moveInfo.IsCastling {
+		myRookPosVals := myPiecePosVals[dragon.Rook]
+		castlingRookDelta = EvalCp(myRookPosVals[moveInfo.RookCastleTo] - myRookPosVals[moveInfo.RookCastleFrom])
+	}
+
+	return toEval - fromEval + captureEval + castlingRookDelta
+}
+
+// Static eval only - no mate checks - from current mover's perspective
+func NegaStaticEval(board *dragon.Board) EvalCp {
+	staticEval := StaticEval(board)
+
+	if board.Wtomove {
+		return staticEval
+	}
+	return -staticEval
+}
+
+// Static eval only - no mate checks - from white's perspective
 func StaticEval(board *dragon.Board) EvalCp {
 	whitePiecesEval := piecesEval(&board.White)
 	blackPiecesEval := piecesEval(&board.Black)
