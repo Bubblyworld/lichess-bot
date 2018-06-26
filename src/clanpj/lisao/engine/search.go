@@ -25,7 +25,7 @@ type SearchStatsT struct {
 	QDeepKillerCuts uint64 // #nodes with deep killer move cut
 	QPats uint64           // #qnodes with stand pat best
 	QPatCuts uint64        // #qnodes with stand pat cut
-	QShallows uint64       // #qnodes where we reached full depth - i.e. likely failed to quiesce
+	QQuiesced uint64       // #qnodes where we successfully quiesced
 	QPrunes uint64         // #qnodes where we reached full depth - i.e. likely failed to quiesce
 }
 	
@@ -486,7 +486,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 			return NoMove, mateEval(board, depthFromRoot) // TODO checks for mate again expensively
 		} else {
 			// Already quiesced - just return static eval
-			stats.QShallows++
+			stats.QQuiesced++
 			return NoMove, staticEval
 		}
 	}
@@ -710,75 +710,82 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	// Maximise eval with beta cut-off
 	bestMove := NoMove
 	bestEval := YourCheckMateEval
+
+	// Did we reach quiescence at all leaves?
+	isQuiesced := false
 	
 	// Generate all noisy legal moves
 	legalMoves, isInCheck := board.GenerateLegalMoves2(/*onlyCapturesPromosCheckEvasion*/true)
 	
-	// No noisy mvoes
 	if len(legalMoves) == 0 {
-		// Check for checkmate or stalemate
+		// No noisy moves - checkmate or stalemate or just quiesced
+		isQuiesced = true
 		if isInCheck {
 			stats.QMates++
-			return NoMove, negaMateEval(board, depthFromRoot) // TODO checks for mate again expensively
+			bestMove, bestEval = NoMove, negaMateEval(board, depthFromRoot) // TODO checks for mate again expensively
 		} else {
 			// Already quiesced - just return static eval
-			stats.QShallows++
-			return NoMove, staticNegaEval
+			bestMove, bestEval = NoMove, staticNegaEval
 		}
+	} else {
+		// Place killer-move (or deep killer move) first if it's there
+		usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+		
+		childKiller := NoMove
+		
+		for _, move := range legalMoves {
+			// Make the move
+			moveInfo := board.Apply2(move)
+			
+			newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
+			
+			// Get the (deep) eval
+			var eval EvalCp
+			if qDepthToGo <= 1 {
+				stats.QNodes++
+				stats.QPrunes++
+				// Ignore mate check to avoid generating moves at all leaf nodes
+				eval = newNegaStaticEval
+			} else {
+				childKiller, eval = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
+				eval = -eval // back to our perspective
+			}
+			
+			// Take back the move
+			moveInfo.Unapply()
+			
+			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
+			if eval > bestEval {
+				bestEval, bestMove = eval, move
+			}
+			
+			if alpha < bestEval {
+				alpha = bestEval
+			}
+			
+			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
+			if alpha >= beta {
+				if bestMove == killer {
+					if usingDeepKiller {
+						stats.QDeepKillerCuts++
+					} else {
+						stats.QKillerCuts++
+					}
+				}
+				// beta cut-off
+				deepKillers[depthFromRoot] = bestMove
+				return bestMove, bestEval
+			}
+		}
+		
+		stats.QPats++
+		deepKillers[depthFromRoot] = bestMove
+		
 	}
 
-	// Place killer-move (or deep killer move) first if it's there
-	usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
-		
-	childKiller := NoMove
-	
-	for _, move := range legalMoves {
-		// Make the move
-		moveInfo := board.Apply2(move)
-		
-		newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
-		
-		// Get the (deep) eval
-		var eval EvalCp
-		if qDepthToGo <= 1 {
-			stats.QNodes++
-			stats.QPrunes++
-			// Ignore mate check to avoid generating moves at all leaf nodes
-			eval = newNegaStaticEval
-		} else {
-			childKiller, eval = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
-			eval = -eval // back to our perspective
-		}
-		
-		// Take back the move
-		moveInfo.Unapply()
-		
-		// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
-		if eval > bestEval {
-			bestEval, bestMove = eval, move
-		}
-		
-		if alpha < bestEval {
-			alpha = bestEval
-		}
-		
-		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-		if alpha >= beta {
-			if bestMove == killer {
-				if usingDeepKiller {
-					stats.QDeepKillerCuts++
-				} else {
-					stats.QKillerCuts++
-				}
-			}
-			// beta cut-off
-			deepKillers[depthFromRoot] = bestMove
-			return bestMove, bestEval
-		}
+	if isQuiesced {
+		stats.QQuiesced++
 	}
-	
-	stats.QPats++
-	deepKillers[depthFromRoot] = bestMove
 	
 	return bestMove, bestEval
 }
