@@ -289,6 +289,7 @@ func prioritiseKillerMove(legalMoves []dragon.Move, killer dragon.Move) {
 
 // Move the killer or deep-killer move to the front of the legal moves list, if it's in the legal moves list.
 // Return true iff we're using the deep-killer
+// TODO - install both killer and deepKiller if they're both valid and distinct
 func prioritiseKillerMove2(legalMoves []dragon.Move, killer dragon.Move, deepKiller dragon.Move, killersStat *uint64, deepKillersStat *uint64) bool {
 	usingDeepKiller := false
 	if UseKillerMoves {
@@ -517,22 +518,8 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		}
 	}
 
-	usingDeepKiller := false
-	if UseKillerMoves {
-		if killer == NoMove && UseDeepKillerMoves {
-			usingDeepKiller = true
-			killer = deepKillers[depthFromRoot]
-		}
-		// Place killer-move first if it's there
-		prioritiseKillerMove(legalMoves, killer)
-		if legalMoves[0] == killer {
-			if usingDeepKiller {
-				stats.QDeepKillers++
-			} else {
-				stats.QKillers++
-			}
-		}
-	}
+	// Place killer-move (or deep killer move) first if it's there
+	usingDeepKiller := prioritiseKillerMove2(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
 
 	// Would be smaller with negalpha-beta but this is simple
 	if board.Wtomove {
@@ -781,6 +768,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		}
 	}
 
+	// Place killer-move (or deep killer move) first if it's there
 	usingDeepKiller := prioritiseKillerMove2(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
 		
 	childKiller := NoMove
