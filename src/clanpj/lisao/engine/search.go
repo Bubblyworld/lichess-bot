@@ -287,6 +287,35 @@ func prioritiseKillerMove(legalMoves []dragon.Move, killer dragon.Move) {
 	}
 }
 
+// Move the killer or deep-killer move to the front of the legal moves list, if it's in the legal moves list.
+// Return true iff we're using the deep-killer
+func prioritiseKillerMove2(legalMoves []dragon.Move, killer dragon.Move, deepKiller dragon.Move, killersStat *uint64, deepKillersStat *uint64) bool {
+	usingDeepKiller := false
+	if UseKillerMoves {
+		if killer == NoMove && UseDeepKillerMoves {
+			usingDeepKiller = true
+			killer = deepKiller
+		}
+		// Place killer-move first if it's there
+		if killer != NoMove {
+			for i := 0; i < len(legalMoves); i++ {
+				if legalMoves[i] == killer {
+					legalMoves[0], legalMoves[i] = killer, legalMoves[0]
+					break
+				}
+			}
+		}
+		if legalMoves[0] == killer {
+			if usingDeepKiller {
+				*deepKillersStat++
+			} else {
+				*killersStat++
+			}
+		}
+	}
+	return usingDeepKiller
+}
+
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
 func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
 
@@ -710,8 +739,7 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 // Quiescence search - differs from full search as follows:
 //   - we only look at captures and promotions - we could/should also possibly look at check evasion, but check detection is currently expensive
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
-// TODO - implement more efficient generation of 'noisy' moves in dragontoothmg
-// TODO - better static eval if we bottom out without quescing, e.g. static exchange evaluation (SEE)
+// TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
 func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
 
 	stats.QNodes++
@@ -727,12 +755,19 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	if alpha >= beta {
 		stats.QPats++
 		stats.QPatCuts++
+
 		return NoMove, staticNegaEval
 	}
 
+	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
+
+	// Maximise eval with beta cut-off
+	bestMove := NoMove
+	bestEval := YourCheckMateEval
+	
 	// Generate all noisy legal moves
 	legalMoves, isInCheck := board.GenerateLegalMoves2(/*onlyCapturesPromosCheckEvasion*/true)
-
+	
 	// No noisy mvoes
 	if len(legalMoves) == 0 {
 		// Check for checkmate or stalemate
@@ -746,26 +781,8 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		}
 	}
 
-	usingDeepKiller := false
-	if UseKillerMoves {
-		if killer == NoMove && UseDeepKillerMoves {
-			usingDeepKiller = true
-			killer = deepKillers[depthFromRoot]
-		}
-		// Place killer-move first if it's there
-		prioritiseKillerMove(legalMoves, killer)
-		if legalMoves[0] == killer {
-			if usingDeepKiller {
-				stats.QDeepKillers++
-			} else {
-				stats.QKillers++
-			}
-		}
-	}
-
-	// White to move - maximise eval with beta cut-off
-	var bestMove = NoMove
-	var bestEval EvalCp = BlackCheckMateEval
+	usingDeepKiller := prioritiseKillerMove2(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+		
 	childKiller := NoMove
 	
 	for _, move := range legalMoves {
@@ -812,8 +829,9 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			return bestMove, bestEval
 		}
 	}
-
+	
 	stats.QPats++
 	deepKillers[depthFromRoot] = bestMove
+	
 	return bestMove, bestEval
 }
