@@ -10,18 +10,6 @@ import (
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
-// func isBitSet(uint64 bits, bitIdx uint) bool {
-// 	return (bits & (uint64(1) << bitIdx)) != 0
-// }
-
-// func setBit(uint64 *bits, bitIdx uint) {
-// 	*bits |= (uint64(1) << bitIdx))
-// }
-
-// func clearBit(uint64 *bits, bitIdx uint) {
-// 	*bits &= ^(uint64(1) << bitIdx))
-// }
-
 // Members ordered by descending size for better packing
 type QSearchTTEntryT struct {
 	zobrist uint64 // Zobrist hash from dragontoothmg
@@ -46,7 +34,7 @@ func qttIndex(qtt []QSearchTTEntryT, zobrist uint64, isWhiteToMove bool) int {
 	}
 	
 	// Just do mod - let's see how it performs (~40+ cycles on modern x86)
-	return int(hash % len(qtt))
+	return int(hash % uint64(len(qtt)))
 }
 
 func isHit(entry *QSearchTTEntryT, zobrist uint64, isWhiteToMove bool) bool {
@@ -55,13 +43,14 @@ func isHit(entry *QSearchTTEntryT, zobrist uint64, isWhiteToMove bool) bool {
 
 // Initialise a QTT entry
 // There is policy in here, because we need to decide whether to overwrite or not when we see a new depth (currently pick greater depth).
-func writeQttEntry(qtt []QSearchTTEntryT, uint64 zobrist, isWhiteToMove bool, zobrist uint64, eval EvalCp, bestMove dragon.Move, qDepthToGo int, isLowerBound bool, isQuiesced bool) {
-	QSearchTTEntryT entry // use a full struct overwrite to obliterate old data
+func writeQttEntry(qtt []QSearchTTEntryT, zobrist uint64, isWhiteToMove bool, eval EvalCp, bestMove dragon.Move, qDepthToGo int, isLowerBound bool, isQuiesced bool) {
+	var entry QSearchTTEntryT // use a full struct overwrite to obliterate old data
 
 	entry.zobrist = zobrist
 	entry.isWhiteToMove = isWhiteToMove
 	
-	entry.depthHitBits |= (uint16(1) << qDepthToGo)
+	entry.depthHitBits |= (uint16(1) << uint(qDepthToGo))
+	
 	entry.eval = eval
 	entry.bestMove = bestMove
 	entry.qDepthToGo = int8(qDepthToGo)
@@ -69,7 +58,7 @@ func writeQttEntry(qtt []QSearchTTEntryT, uint64 zobrist, isWhiteToMove bool, zo
 	entry.isQuiesced = isQuiesced
 	
 
-	index := qttIndex(qtt, zobrist, bool)
+	index := qttIndex(qtt, zobrist, isWhiteToMove)
 	qtt[index] = entry
 }
 
@@ -78,18 +67,18 @@ func writeQttEntry(qtt []QSearchTTEntryT, uint64 zobrist, isWhiteToMove bool, zo
 // There is policy in here, because we need to decide whether to overwrite or not when we see a new depth (currently pick greater depth).
 func updateQttEntry(entry *QSearchTTEntryT, eval EvalCp, bestMove dragon.Move, qDepthToGo int, isLowerBound bool, isQuiesced bool) {
 	// Note that we've seen this depth even if we don't use its results
-	entry.depthHitBits |= (uint16(1) << qDepthToGo)
+	entry.depthHitBits |= (uint16(1) << uint(qDepthToGo))
 
 	// Prefer a quiesced result, even at lower depth,because it applies exactly to greater depths;
 	//   otherwise pick the greater depth, or pick an exact result over a lower-bound
-	updateIsBetter = false
+	updateIsBetter := false
 	if isQuiesced && qDepthToGo <= int(entry.qDepthToGo) {
 		// Quiesced results apply to all greater depths
 		updateIsBetter = true
-	} else if qDepthToGo > entry.qDepthToGo {
+	} else if qDepthToGo > int(entry.qDepthToGo) {
 		// Greater depths cut off higher
 		updateIsBetter = true
-	} else if qDepthToGo == entry.qDepthToGo {
+	} else if qDepthToGo == int(entry.qDepthToGo) {
 		// Pick the more accurate result
 		if entry.isLowerBound && !isLowerBound {
 			updateIsBetter = true
@@ -107,18 +96,32 @@ func updateQttEntry(entry *QSearchTTEntryT, eval EvalCp, bestMove dragon.Move, q
 	}
 }
 
-// Return QTT hit and true iff this is an exact hit, or nil
+// Return QTT hit and isExactHit, or nil
 func probeQtt(qtt []QSearchTTEntryT, zobrist uint64, isWhiteToMove bool, qDepthToGo int) (*QSearchTTEntryT, bool) {
-	index := qttIndex(qtt, zobrist) 
+
+	index := qttIndex(qtt, zobrist, isWhiteToMove) 
 	var entry *QSearchTTEntryT = &qtt[index]
+	
 	if isHit(entry, zobrist, isWhiteToMove) {
 		// update stats
 		entry.nHits++
-		if qDepthToGo != int(entry.qDepthToGo) {
-			// This is also a 
-			isQuietAlready := qDepthToGo > entry.qDepthToGo && entry.isQuiesced
+
+		// It's an exact hit if we're at the same depth.
+		// Most engines are happy to use cached results from previous deeper searches,
+		//   but we require precise depth match so that we retain exact behaviour parity with no QTT.
+		isExactHit := qDepthToGo == int(entry.qDepthToGo)
+		//    ... or if this is a fully quiesced result
+		isExactHit = isExactHit || qDepthToGo > int(entry.qDepthToGo) && entry.isQuiesced
+
+		if !isExactHit {
+			entry.nBadDepthHits++
+			// Have we seen this depth before (and overwritten it)?
+			if entry.depthHitBits & (uint16(1) << uint(qDepthToGo)) != 0 {
+				entry.nSadDepthHits++
+			}
 		}
-		return entry
+		
+		return entry, isExactHit
 	}
-	return nil
+	return nil, false
 }
