@@ -640,7 +640,7 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 			stats.Nodes ++
 			if UseQSearch {
 				// Quiesce
-				childKiller, eval = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
+				childKiller, eval, _ = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
 				eval = -eval // back to our perspective
 			} else {
 				eval = newNegaStaticEval
@@ -685,8 +685,9 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 // Quiescence search - differs from full search as follows:
 //   - we only look at captures and promotions - we could/should also possibly look at check evasion, but check detection is currently expensive
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
+// Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
-func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp, bool) {
 
 	stats.QNodes++
 	stats.QNonLeafs++
@@ -702,7 +703,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		stats.QPats++
 		stats.QPatCuts++
 
-		return NoMove, staticNegaEval
+		return NoMove, staticNegaEval, false // TODO - not sure what to return here for isQuiesced - this is playing safe
 	}
 
 	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
@@ -728,6 +729,9 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			bestMove, bestEval = NoMove, staticNegaEval
 		}
 	} else {
+		// We're quiesced as long as all children (we visit) are quiesced.
+		isQuiesced := false
+		
 		// Place killer-move (or deep killer move) first if it's there
 		usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
 		
@@ -746,9 +750,13 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 				stats.QPrunes++
 				// Ignore mate check to avoid generating moves at all leaf nodes
 				eval = newNegaStaticEval
+				// We hit max depth before quiescing
+				isQuiesced = false
 			} else {
-				childKiller, eval = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
+				var isChildQuiesced bool
+				childKiller, eval, isChildQuiesced = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
 				eval = -eval // back to our perspective
+				isQuiesced = isQuiesced && isChildQuiesced
 			}
 			
 			// Take back the move
@@ -774,7 +782,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 				}
 				// beta cut-off
 				deepKillers[depthFromRoot] = bestMove
-				return bestMove, bestEval
+				return bestMove, bestEval, isQuiesced
 			}
 		}
 		
@@ -787,5 +795,5 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		stats.QQuiesced++
 	}
 	
-	return bestMove, bestEval
+	return bestMove, bestEval, isQuiesced
 }
