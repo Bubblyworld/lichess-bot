@@ -687,7 +687,8 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 	return bestMove, bestEval
 }
 
-const QttSize = 16*1024
+//const QttSize = 256*1024
+const QttSize = 262139 // largest prime < 256*1024
 // Want this to be per-thread, but for now we're single-threaded so global is ok
 var qtt []QSearchTTEntryT = make([]QSearchTTEntryT, QttSize)
 
