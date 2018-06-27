@@ -302,6 +302,10 @@ func uciLoop() {
 	}
 }
 
+func perC(n uint64, N uint64) string {
+	return fmt.Sprintf("%d [%.2f%%]", n, float64(n)/float64(N)*100)
+}
+
 // Lightweight wrapper around Lisao Search.
 // Prints the results (bestmove). TODO PV, stats
 // TODO - plumb timing and halt stuff properly
@@ -314,8 +318,11 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 		eval = -eval
 	}
 
-	fmt.Println("info string nodes", stats.Nodes, "mates", stats.Mates, "nonleafs", stats.NonLeafs, "killers", stats.Killers, "killercuts", stats.KillerCuts, "deepkillers", stats.DeepKillers, "deepkillercuts", stats.DeepKillerCuts)
-	fmt.Println("info string qnodes", stats.QNodes, "qmates", stats.QMates, "qnonleafs", stats.QNonLeafs, "qpatcuts", stats.QPatCuts, "qkillers", stats.QKillers, "qkiller-cuts", stats.QKillerCuts, "qdeepkillers", stats.QDeepKillers, "qdeepkillercuts", stats.QDeepKillerCuts, "qpats", stats.QPats, "qquiesced", stats.QQuiesced, "qprunes", stats.QPrunes)
+	// Reverse order from which it appears in the UCI driver
+	fmt.Println("info string   qmates:", perC(stats.QMates, stats.QNonLeafs), "qpatcuts:", perC(stats.QPatCuts, stats.QNonLeafs), "qkillers:", perC(stats.QKillers, stats.QNonLeafs), "qkiller-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "qdeepkillers:", perC(stats.QDeepKillers, stats.QNonLeafs), "qdeepkillercuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
+	fmt.Println("info string qnodes:", stats.QNodes, "qnonleafs:", stats.QNonLeafs, "qpats:", perC(stats.QPats, stats.QNonLeafs), "qquiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "qprunes:", perC(stats.QPrunes, stats.QNonLeafs))
+	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killercuts:", perC(stats.KillerCuts, stats.NonLeafs), "deepkillers:", perC(stats.DeepKillers, stats.NonLeafs), "deepkillercuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	fmt.Println("info string nodes:", stats.Nodes, "nonleafs:", stats.NonLeafs)
 	// TODO proper checkmate score string
 	fmt.Println("info depth", engine.SearchDepth, "score cp", eval, "nodes", stats.Nodes, "pv", &bestMove)
 
