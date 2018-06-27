@@ -25,12 +25,13 @@ type QSearchTTEntryT struct {
 	isQuiesced bool // true iff this applies to all greater depths because there are no noisy moves
 }
 
-const WhiteToMoveHashMix = 100000001693 // it's big, it's prime, no idea if it's a good choice for an xor mix
+const WhiteToMoveHashMix = 100000001693 // it's big, it's prime, no idea if it's a good choice for a hash mixin
 
 func qttIndex(qtt []QSearchTTEntryT, zobrist uint64, isWhiteToMove bool) int {
 	hash := zobrist
 	if isWhiteToMove {
-		hash ^= WhiteToMoveHashMix
+		// Mixin with addition seems likely to be better than xor
+		hash += WhiteToMoveHashMix
 	}
 	
 	// Just do mod - let's see how it performs (~40+ cycles on modern x86)

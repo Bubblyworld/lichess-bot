@@ -27,6 +27,10 @@ type SearchStatsT struct {
 	QPatCuts uint64        // #qnodes with stand pat cut
 	QQuiesced uint64       // #qnodes where we successfully quiesced
 	QPrunes uint64         // #qnodes where we reached full depth - i.e. likely failed to quiesce
+	QttHits uint64         // #qnodes with successful QTT probe
+	QttDepthHits uint64    // #qnodes where QTT hit was at the same depth
+	QttCuts uint64         // #qnodes with beta cutoff from QTT hit
+	QttTrueEvals uint64    // #qnodes with QQT hits that are the same depth and are not a lower bound
 }
 	
 
@@ -41,6 +45,7 @@ const (
 var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 6
 var UseQSearch = true
+var UseQSearchTT = true
 var QSearchDepth = 6
 var UseKillerMoves = true
 var UseDeepKillerMoves = true
@@ -682,6 +687,15 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 	return bestMove, bestEval
 }
 
+const QttSize = 16*1024
+// Want this to be per-thread, but for now we're single-threaded so global is ok
+var qtt []QSearchTTEntryT = make([]QSearchTTEntryT, QttSize)
+
+func ResetQtt() {
+	qtt = make([]QSearchTTEntryT, QttSize)
+}
+
+
 // Quiescence search - differs from full search as follows:
 //   - we only look at captures and promotions - we could/should also possibly look at check evasion, but check detection is currently expensive
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
@@ -708,10 +722,55 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 
 	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
 
+	// Probe the Quiescence Transposition Table
+	var qttEntry *QSearchTTEntryT = nil
+	var isExactQttHit = false
+	var qttMove = NoMove
+	
+	if UseQSearchTT {
+		qttEntry, isExactQttHit = probeQtt(qtt, board.Hash(), board.Wtomove, qDepthToGo)
+
+		if qttEntry != nil {
+			stats.QttHits++
+
+			qttMove = qttEntry.bestMove
+
+			// If the QTT hit is for exactly the same depth then use the eval; otherwise we just use the bestMove as a move hint
+			// Note that most engines will use the TT eval if the TT is a deeper search; however this requires a 'stable' static eval
+			//   and changes behaviour between TT-enabled/disabled. For rigourous testing it's better to be consistent.
+			
+			if isExactQttHit {
+				stats.QttDepthHits++
+
+				qttEval := qttEntry.eval
+				if qttEntry.isLowerBound {
+					// Inexact QTT eval - see if it cuts
+					if alpha < qttEval {
+						alpha = qttEval
+					}
+					
+					// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
+					if alpha >= beta {
+						stats.QttCuts++
+						
+						return qttMove, qttEval, qttEntry.isQuiesced
+					}
+				} else {
+					// Return exact eval
+					stats.QttTrueEvals++
+					return qttMove, qttEntry.eval, qttEntry.isQuiesced
+				}
+			}
+		}
+	}
+
 	// Maximise eval with beta cut-off
 	bestMove := NoMove
 	bestEval := YourCheckMateEval
 
+	// Did we break out early due to beta cut-off (in which case the best eval is a lower bound of the true eval)?
+	isBetaCutoff := false
+		
 	// Did we reach quiescence at all leaves?
 	isQuiesced := false
 	
@@ -732,10 +791,8 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		// We're quiesced as long as all children (we visit) are quiesced.
 		isQuiesced := true
 
-		// Did we break out early due to beta cut-off?
-		isBetaCutoff := false
-		
 		// Place killer-move (or deep killer move) first if it's there
+		// TODO include QTT move
 		killer, usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
 		
 		childKiller := NoMove
@@ -798,6 +855,17 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 
 	if isQuiesced {
 		stats.QQuiesced++
+	}
+
+	// Update the QTT
+	if UseQSearchTT {
+		if qttEntry == nil {
+			// Write a new QTT entry
+			writeQttEntry(qtt, board.Hash(), board.Wtomove, bestEval, bestMove, qDepthToGo, /*isLowerBound*/isBetaCutoff, isQuiesced)
+		} else {
+			// Update the existing QTT entry
+			updateQttEntry(qttEntry, bestEval, bestMove, qDepthToGo, /*isLowerBound*/isBetaCutoff, isQuiesced)
+		}
 	}
 	
 	return bestMove, bestEval, isQuiesced
