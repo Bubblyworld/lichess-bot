@@ -41,6 +41,7 @@ func uciLoop() {
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
+			fmt.Println("option name UseQSearchTT type check default", engine.UseQSearchTT)
 			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
@@ -48,10 +49,12 @@ func uciLoop() {
 		case "isready":
 			fmt.Println("readyok")
 		case "ucinewgame":
-			//transtable.Initialize(transtable.DefaultTtableSize)
 			// reset the board, in case the GUI skips 'position' after 'newgame'
 			board = dragon.ParseFen(dragon.Startpos)
-			// reset the history map
+			// TODO reset the history table
+			// reset the qsearch TT
+			engine.ResetQtt()
+
 		case "quit":
 			return
 		case "setoption":
@@ -94,6 +97,15 @@ func uciLoop() {
 					engine.UseQSearch = true
 				case "false":
 					engine.UseQSearch = false
+				default:
+					fmt.Println("info string Unrecognised UseQSearch option:", tokens[4])
+				}
+			case "useqsearchtt":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQSearchTT = true
+				case "false":
+					engine.UseQSearchTT = false
 				default:
 					fmt.Println("info string Unrecognised UseQSearch option:", tokens[4])
 				}
@@ -302,6 +314,10 @@ func uciLoop() {
 	}
 }
 
+func perC(n uint64, N uint64) string {
+	return fmt.Sprintf("%d [%.2f%%]", n, float64(n)/float64(N)*100)
+}
+
 // Lightweight wrapper around Lisao Search.
 // Prints the results (bestmove). TODO PV, stats
 // TODO - plumb timing and halt stuff properly
@@ -314,8 +330,15 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 		eval = -eval
 	}
 
-	fmt.Println("info string nodes", stats.Nodes, "mates", stats.Mates, "nonleafs", stats.NonLeafs, "killers", stats.Killers, "killercuts", stats.KillerCuts, "deepkillers", stats.DeepKillers, "deepkillercuts", stats.DeepKillerCuts)
-	fmt.Println("info string qnodes", stats.QNodes, "qmates", stats.QMates, "qnonleafs", stats.QNonLeafs, "qpatcuts", stats.QPatCuts, "qkillers", stats.QKillers, "qkiller-cuts", stats.QKillerCuts, "qdeepkillers", stats.QDeepKillers, "qdeepkillercuts", stats.QDeepKillerCuts, "qpats", stats.QPats, "qshallows", stats.QShallows, "qprunes", stats.QPrunes)
+	// Reverse order from which it appears in the UCI driver
+	fmt.Println("info string   qmates:", perC(stats.QMates, stats.QNonLeafs), "qpatcuts:", perC(stats.QPatCuts, stats.QNonLeafs), "qkillers:", perC(stats.QKillers, stats.QNonLeafs), "qkiller-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "qdeepkillers:", perC(stats.QDeepKillers, stats.QNonLeafs), "qdeepkillercuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
+	if engine.UseQSearchTT {
+		fmt.Println("info string   qtthits:", perC(stats.QttHits, stats.QNonLeafs), "qttdepthhits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-cuts:", perC(stats.QttCuts, stats.QNonLeafs), "qtttrueevals:", perC(stats.QttTrueEvals, stats.QNonLeafs))
+	}
+	fmt.Println("info string qnodes:", stats.QNodes, "qnonleafs:", stats.QNonLeafs, "qpats:", perC(stats.QPats, stats.QNonLeafs), "qquiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "qprunes:", perC(stats.QPrunes, stats.QNonLeafs))
+	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killercuts:", perC(stats.KillerCuts, stats.NonLeafs), "deepkillers:", perC(stats.DeepKillers, stats.NonLeafs), "deepkillercuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	fmt.Println("info string nodes:", stats.Nodes, "nonleafs:", stats.NonLeafs)
+	// TODO proper checkmate score string
 	fmt.Println("info depth", engine.SearchDepth, "score cp", eval, "nodes", stats.Nodes, "pv", &bestMove)
 
 	// Wait for the stop signal and print the result
