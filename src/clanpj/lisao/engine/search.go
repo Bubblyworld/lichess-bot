@@ -45,7 +45,7 @@ const (
 var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 6
 var UseQSearch = true
-var UseQSearchTT = true
+var UseQSearchTT = false
 var QSearchDepth = 6
 var UseKillerMoves = true
 var UseDeepKillerMoves = true
@@ -687,8 +687,9 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 	return bestMove, bestEval
 }
 
+const QttSize = 16*1024
 //const QttSize = 256*1024
-const QttSize = 262139 // largest prime < 256*1024
+//const QttSize = 262139 // largest prime < 256*1024
 // Want this to be per-thread, but for now we're single-threaded so global is ok
 var qtt []QSearchTTEntryT = make([]QSearchTTEntryT, QttSize)
 
@@ -702,6 +703,7 @@ func ResetQtt() {
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
 // Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
+// TODO - include moving away from attacks too?
 func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp, bool) {
 
 	stats.QNodes++
