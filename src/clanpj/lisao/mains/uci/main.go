@@ -16,7 +16,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0ab Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0mo Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -39,10 +39,11 @@ func uciLoop() {
 			fmt.Println("id author Clan PJ")
 			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var NegaMax var AlphaBeta var NegAlphaBeta")
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
+			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
 			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
 			fmt.Println("option name UseQSearchTT type check default", engine.UseQSearchTT)
-			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
+			fmt.Println("option name UseQSearchMoveOrdering type check default", engine.UseQSearchMoveOrdering)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
 			fmt.Println("uciok")
@@ -107,7 +108,16 @@ func uciLoop() {
 				case "false":
 					engine.UseQSearchTT = false
 				default:
-					fmt.Println("info string Unrecognised UseQSearch option:", tokens[4])
+					fmt.Println("info string Unrecognised UseQSearchTT option:", tokens[4])
+				}
+			case "useqsearchmoveordering":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQSearchMoveOrdering = true
+				case "false":
+					engine.UseQSearchMoveOrdering = false
+				default:
+					fmt.Println("info string Unrecognised UseQSearchMoveOrdering option:", tokens[4])
 				}
 			case "usedeltaeval":
 				switch strings.ToLower(tokens[4]) {

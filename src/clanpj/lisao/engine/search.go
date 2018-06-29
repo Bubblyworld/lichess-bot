@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"sort"
 	// "time"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
@@ -44,12 +45,13 @@ const (
 )
 var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 6
+var UseDeltaEval = true
 var UseQSearch = true
 var UseQSearchTT = false
-var QSearchDepth = 6
+var UseQSearchMoveOrdering = true
+var QSearchDepth = 8
 var UseKillerMoves = true
 var UseDeepKillerMoves = true
-var UseDeltaEval = true
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {
@@ -687,6 +689,69 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 	return bestMove, bestEval
 }
 
+// Indexed by promo piece type - only N, B, R, Q valid
+var promoMOValue = [8]uint8 {0, 0, /*N*/105, /*B*/103, /*R*/104, /*Q*/109, 0, 0}
+
+// Indexed by [victim][atacker]
+// Basically MVV-LVA with king attacker rated high(!)
+// TODO play with king ordering, and bishop-vs-knight ordering
+// TODO boost moves that have danger of take-back, e.g. rook takes rook
+var captureMOValue = [8][8]uint8 {
+	/*mover*/
+ 	/*Nothing*/ {0,  9,  7,  6,  5,  4,  8, 0}, // check evasion ordering
+	/*Pawn*/    {0, 19, 17, 16, 15, 14, 18, 0},
+	/*Knight*/  {0, 39, 37, 36, 35, 34, 38, 0},
+	/*Bishop*/  {0, 49, 47, 46, 45, 44, 48, 0},
+	/*Rook*/    {0, 59, 57, 56, 55, 54, 58, 0},
+	/*Queen*/   {0, 99, 97, 96, 95, 94, 98, 0},
+	/*King*/    {0, 0, 0, 0, 0, 0, 0, 0},       // invalid king capture
+	/*Invalid*/ {0, 0, 0, 0, 0, 0, 0, 0}}
+
+// Sorting interface
+type byMoValueDesc struct {
+	moves []dragon.Move
+	values []uint8
+}
+
+func (mo *byMoValueDesc) Len() int {
+	return len(mo.moves)
+}
+
+func (mo *byMoValueDesc) Swap(i, j int) {
+	mo.moves[i], mo.moves[j] = mo.moves[j], mo.moves[i]
+	mo.values[i], mo.values[j] = mo.values[j], mo.values[i]
+}
+
+// Less is more for us
+func (mo *byMoValueDesc) Less(i, j int) bool {
+	return mo.values[i] >  mo.values[j]
+}
+
+// Order q-search moves heuristically.
+// Preference is:
+// 1. Promotions by promo type
+// 2. MMV-LVA for captures
+//     (most valuable victim first, then least-valuable attacker second)
+// TODO Queen/rook rampage pruning
+func orderQSearchMoves(board *dragon.Board, moves []dragon.Move) {
+	// Value of each move - nothing to do with any other eval, just a local ordering metric
+	values := make([]uint8, len(moves))
+	for i, move := range moves {
+		from, to := move.From(), move.To()
+		attacker := board.PieceAt(from)
+		// We miss en-passant but it's not worth the effort to do properly
+		victim := board.PieceAt(to)
+		promoPiece := move.Promote()
+
+		values[i] = promoMOValue[promoPiece] + captureMOValue[victim][attacker]
+	}
+
+	mo := byMoValueDesc{ moves, values}
+	sort.Sort(&mo)
+}
+
+
+
 const QttSize = 16*1024
 //const QttSize = 256*1024
 //const QttSize = 262139 // largest prime < 256*1024
@@ -696,7 +761,6 @@ var qtt []QSearchTTEntryT = make([]QSearchTTEntryT, QttSize)
 func ResetQtt() {
 	qtt = make([]QSearchTTEntryT, QttSize)
 }
-
 
 // Quiescence search - differs from full search as follows:
 //   - we only look at captures and promotions - we could/should also possibly look at check evasion, but check detection is currently expensive
@@ -791,6 +855,12 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			bestMove, bestEval = NoMove, staticNegaEval
 		}
 	} else {
+		// Sort the moves heuristically
+		// TODO - currently overrides killer move so no point enabling both
+		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
+			orderQSearchMoves(board, legalMoves)
+		}
+		
 		// We're quiesced as long as all children (we visit) are quiesced.
 		isQuiesced := true
 

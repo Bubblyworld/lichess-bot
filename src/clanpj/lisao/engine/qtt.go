@@ -25,6 +25,7 @@ type QSearchTTEntryT struct {
 	isQuiesced bool // true iff this applies to all greater depths because there are no noisy moves
 }
 
+// TODO - this is redundant the zobrist hash already includes current mover
 const WhiteToMoveHashMix = 100000001693 // it's big, it's prime, no idea if it's a good choice for a hash mixin
 
 func qttIndex(qtt []QSearchTTEntryT, zobrist uint64, isWhiteToMove bool) int {
