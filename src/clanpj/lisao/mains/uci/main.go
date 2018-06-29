@@ -16,7 +16,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0mo Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0rp Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -40,12 +40,16 @@ func uciLoop() {
 			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var NegaMax var AlphaBeta var NegAlphaBeta")
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
-			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
-			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
-			fmt.Println("option name UseQSearchTT type check default", engine.UseQSearchTT)
-			fmt.Println("option name UseQSearchMoveOrdering type check default", engine.UseQSearchMoveOrdering)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
+			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
+			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
+			fmt.Println("option name UseQSearchTT type check default", engine.UseQSearchTT)
+			fmt.Println("option name UseQSearchMoveOrdering type check default", engine.UseQSearchMoveOrdering)
+			fmt.Println("option name UseQSearchRampagePruning type check default", engine.UseQSearchRampagePruning)
+			fmt.Println("option name QSearchRampagePruningDepth type spin default", engine.QSearchRampagePruningDepth, "min 0 max 1024")
+			fmt.Println("option name UseQKillerMoves type check default", engine.UseQKillerMoves)
+			fmt.Println("option name UseQDeepKillerMoves type check default", engine.UseQDeepKillerMoves)
 			fmt.Println("uciok")
 		case "isready":
 			fmt.Println("readyok")
@@ -64,21 +68,6 @@ func uciLoop() {
 				continue
 			}
 			switch strings.ToLower(tokens[2]) {
-			case "searchdepth":
-				res, err := strconv.Atoi(tokens[4])
-				if err != nil {
-					fmt.Println("info string SearchDepth value is not an int (", err, ")")
-					continue
-				}
-				engine.SearchDepth = res
-				fmt.Println("info string Search depth changes to", res)
-			case "qsearchdepth":
-				res, err := strconv.Atoi(tokens[4])
-				if err != nil {
-					fmt.Println("info string QSearchDepth value is not an int (", err, ")")
-					continue
-				}
-				engine.QSearchDepth = res
 			case "searchalgorithm":
 				switch strings.ToLower(tokens[4]) {
 				case "minimax":
@@ -92,33 +81,14 @@ func uciLoop() {
 				default:
 					fmt.Println("info string Unrecognised Search Algorithm:", tokens[4])
 				}
-			case "useqsearch":
-				switch strings.ToLower(tokens[4]) {
-				case "true":
-					engine.UseQSearch = true
-				case "false":
-					engine.UseQSearch = false
-				default:
-					fmt.Println("info string Unrecognised UseQSearch option:", tokens[4])
+			case "searchdepth":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string SearchDepth value is not an int (", err, ")")
+					continue
 				}
-			case "useqsearchtt":
-				switch strings.ToLower(tokens[4]) {
-				case "true":
-					engine.UseQSearchTT = true
-				case "false":
-					engine.UseQSearchTT = false
-				default:
-					fmt.Println("info string Unrecognised UseQSearchTT option:", tokens[4])
-				}
-			case "useqsearchmoveordering":
-				switch strings.ToLower(tokens[4]) {
-				case "true":
-					engine.UseQSearchMoveOrdering = true
-				case "false":
-					engine.UseQSearchMoveOrdering = false
-				default:
-					fmt.Println("info string Unrecognised UseQSearchMoveOrdering option:", tokens[4])
-				}
+				engine.SearchDepth = res
+				fmt.Println("info string Search depth changes to", res)
 			case "usedeltaeval":
 				switch strings.ToLower(tokens[4]) {
 				case "true":
@@ -146,6 +116,74 @@ func uciLoop() {
 				default:
 					fmt.Println("info string Unrecognised UseDeepKillerMoves option:", tokens[4])
 				}
+			case "useqsearch":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQSearch = true
+				case "false":
+					engine.UseQSearch = false
+				default:
+					fmt.Println("info string Unrecognised UseQSearch option:", tokens[4])
+				}
+			case "qsearchdepth":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string QSearchDepth value is not an int (", err, ")")
+					continue
+				}
+				engine.QSearchDepth = res
+			case "useqsearchtt":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQSearchTT = true
+				case "false":
+					engine.UseQSearchTT = false
+				default:
+					fmt.Println("info string Unrecognised UseQSearchTT option:", tokens[4])
+				}
+			case "useqkillermoves":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQKillerMoves = true
+				case "false":
+					engine.UseQKillerMoves = false
+				default:
+					fmt.Println("info string Unrecognised UseQKillerMoves option:", tokens[4])
+				}
+			case "useqdeepkillermoves":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQDeepKillerMoves = true
+				case "false":
+					engine.UseQDeepKillerMoves = false
+				default:
+					fmt.Println("info string Unrecognised UseDeepKillerMoves option:", tokens[4])
+				}
+			case "useqsearchmoveordering":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQSearchMoveOrdering = true
+				case "false":
+					engine.UseQSearchMoveOrdering = false
+				default:
+					fmt.Println("info string Unrecognised UseQSearchMoveOrdering option:", tokens[4])
+				}
+			case "useqsearchrampagepruning":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseQSearchRampagePruning = true
+				case "false":
+					engine.UseQSearchRampagePruning = false
+				default:
+					fmt.Println("info string Unrecognised UseQSearchRampagePruning option:", tokens[4])
+				}
+			case "qsearchrampagepruningdepth":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string QSearchRampagePruningDepth value is not an int (", err, ")")
+					continue
+				}
+				engine.QSearchRampagePruningDepth = res
 			default:
 				fmt.Println("info string Unknown UCI option", tokens[2])
 			}
@@ -341,7 +379,7 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 	}
 
 	// Reverse order from which it appears in the UCI driver
-	fmt.Println("info string   qmates:", perC(stats.QMates, stats.QNonLeafs), "qpatcuts:", perC(stats.QPatCuts, stats.QNonLeafs), "qkillers:", perC(stats.QKillers, stats.QNonLeafs), "qkiller-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "qdeepkillers:", perC(stats.QDeepKillers, stats.QNonLeafs), "qdeepkillercuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
+	fmt.Println("info string   qmates:", perC(stats.QMates, stats.QNonLeafs), "qpatcuts:", perC(stats.QPatCuts, stats.QNonLeafs), "qrampageprunes:", perC(stats.QRampagePrunes, stats.QNonLeafs), "qkillers:", perC(stats.QKillers, stats.QNonLeafs), "qkiller-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "qdeepkillers:", perC(stats.QDeepKillers, stats.QNonLeafs), "qdeepkillercuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
 	if engine.UseQSearchTT {
 		fmt.Println("info string   qtthits:", perC(stats.QttHits, stats.QNonLeafs), "qttdepthhits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-cuts:", perC(stats.QttCuts, stats.QNonLeafs), "qtttrueevals:", perC(stats.QttTrueEvals, stats.QNonLeafs))
 	}

@@ -24,6 +24,7 @@ type SearchStatsT struct {
 	QKillerCuts uint64     // #qnodes with killer move cut
 	QDeepKillers uint64    // #nodes with deep killer move available
 	QDeepKillerCuts uint64 // #nodes with deep killer move cut
+	QRampagePrunes uint64  // #nodes with deep killer move cut
 	QPats uint64           // #qnodes with stand pat best
 	QPatCuts uint64        // #qnodes with stand pat cut
 	QQuiesced uint64       // #qnodes where we successfully quiesced
@@ -46,12 +47,16 @@ const (
 var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 6
 var UseDeltaEval = true
+var UseKillerMoves = true
+var UseDeepKillerMoves = true       // only valid if UseKillerMoves == true
 var UseQSearch = true
+var QSearchDepth = 8
 var UseQSearchTT = false
 var UseQSearchMoveOrdering = true
-var QSearchDepth = 8
-var UseKillerMoves = true
-var UseDeepKillerMoves = true
+var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
+var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
+var UseQKillerMoves = true
+var UseQDeepKillerMoves = false     // only valid if UseQKillerMoves == true
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {
@@ -284,28 +289,27 @@ func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticNegaEv
 // Move the killer or deep-killer move to the front of the legal moves list, if it's in the legal moves list.
 // Return true iff we're using the deep-killer
 // TODO - install both killer and deepKiller if they're both valid and distinct
-func prioritiseKillerMove(legalMoves []dragon.Move, killer dragon.Move, deepKiller dragon.Move, killersStat *uint64, deepKillersStat *uint64) (dragon.Move, bool) {
+func prioritiseKillerMove(legalMoves []dragon.Move, killer dragon.Move, useDeepKillerMoves bool, deepKiller dragon.Move, killersStat *uint64, deepKillersStat *uint64) (dragon.Move, bool) {
 	usingDeepKiller := false
-	if UseKillerMoves {
-		if killer == NoMove && UseDeepKillerMoves {
-			usingDeepKiller = true
-			killer = deepKiller
-		}
-		// Place killer-move first if it's there
-		if killer != NoMove {
-			for i := 0; i < len(legalMoves); i++ {
-				if legalMoves[i] == killer {
-					legalMoves[0], legalMoves[i] = killer, legalMoves[0]
-					break
-				}
+	
+	if killer == NoMove && useDeepKillerMoves {
+		usingDeepKiller = true
+		killer = deepKiller
+	}
+	// Place killer-move first if it's there
+	if killer != NoMove {
+		for i := 0; i < len(legalMoves); i++ {
+			if legalMoves[i] == killer {
+				legalMoves[0], legalMoves[i] = killer, legalMoves[0]
+				break
 			}
 		}
-		if legalMoves[0] == killer {
-			if usingDeepKiller {
-				*deepKillersStat++
-			} else {
-				*killersStat++
-			}
+	}
+	if legalMoves[0] == killer {
+		if usingDeepKiller {
+			*deepKillersStat++
+		} else {
+			*killersStat++
 		}
 	}
 	return killer, usingDeepKiller
@@ -326,8 +330,11 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 		return NoMove, mateEval(board, depthFromRoot)
 	}
 
-	// Place killer-move (or deep killer move) first if it's there
-	killer, usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
+	usingDeepKiller := false
+	if(UseKillerMoves) {
+		// Place killer-move (or deep killer move) first if it's there
+		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
+	}
 		
 	// Would be smaller with negalpha-beta but this is simple
 	if board.Wtomove {
@@ -371,7 +378,7 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-				if bestMove == killer {
+				if UseKillerMoves && bestMove == killer {
 					if usingDeepKiller {
 						stats.DeepKillerCuts++
 					} else {
@@ -427,7 +434,7 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-				if bestMove == killer {
+				if UseKillerMoves && bestMove == killer {
 					if usingDeepKiller {
 						stats.DeepKillerCuts++
 					} else {
@@ -498,8 +505,11 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		}
 	}
 
-	// Place killer-move (or deep killer move) first if it's there
-	killer, usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+	usingDeepKiller := false
+	if(UseQKillerMoves) {
+		// Place killer-move (or deep killer move) first if it's there
+		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+	}
 
 	// Would be smaller with negalpha-beta but this is simple
 	if board.Wtomove {
@@ -540,7 +550,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-				if bestMove == killer {
+				if UseQKillerMoves && bestMove == killer {
 					if usingDeepKiller {
 						stats.QDeepKillerCuts++
 					} else {
@@ -594,7 +604,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-				if bestMove == killer {
+				if UseQKillerMoves && bestMove == killer {
 					if usingDeepKiller {
 						stats.QDeepKillerCuts++
 					} else {
@@ -628,8 +638,11 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 		return NoMove, negaMateEval(board, depthFromRoot)
 	}
 
-	// Place killer-move (or deep killer move) first if it's there
-	killer, usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
+	usingDeepKiller := false
+	if(UseKillerMoves) {
+		// Place killer-move (or deep killer move) first if it's there
+		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
+	}
 
 	bestMove := NoMove
 	bestEval := BlackCheckMateEval
@@ -647,7 +660,7 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 			stats.Nodes ++
 			if UseQSearch {
 				// Quiesce
-				childKiller, eval, _ = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
+				childKiller, eval, _ = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
 				eval = -eval // back to our perspective
 			} else {
 				eval = newNegaStaticEval
@@ -672,7 +685,7 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 		
 		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 		if alpha >= beta {
-			if bestMove == killer {
+			if UseKillerMoves && bestMove == killer {
 				if usingDeepKiller {
 					stats.DeepKillerCuts++
 				} else {
@@ -727,15 +740,16 @@ func (mo *byMoValueDesc) Less(i, j int) bool {
 	return mo.values[i] >  mo.values[j]
 }
 
-// Order q-search moves heuristically.
+// Order q-search moves heuristically. Also does rampage move pruning.
 // Preference is:
 // 1. Promotions by promo type
 // 2. MMV-LVA for captures
 //     (most valuable victim first, then least-valuable attacker second)
-// TODO Queen/rook rampage pruning
-func orderQSearchMoves(board *dragon.Board, moves []dragon.Move) {
+// Returns the number of moves to look at - except for rampage pruning.
+func orderQSearchMoves(board *dragon.Board, moves []dragon.Move, qDepthFromRoot int, stats *SearchStatsT) int {
 	// Value of each move - nothing to do with any other eval, just a local ordering metric
 	values := make([]uint8, len(moves))
+	isQueenAttacked := false
 	for i, move := range moves {
 		from, to := move.From(), move.To()
 		attacker := board.PieceAt(from)
@@ -744,10 +758,31 @@ func orderQSearchMoves(board *dragon.Board, moves []dragon.Move) {
 		promoPiece := move.Promote()
 
 		values[i] = promoMOValue[promoPiece] + captureMOValue[victim][attacker]
+		if victim == dragon.Queen {
+			isQueenAttacked = true
+		}
 	}
 
 	mo := byMoValueDesc{ moves, values}
 	sort.Sort(&mo)
+
+	nMovesToUse := len(moves)
+	if UseQSearchRampagePruning && qDepthFromRoot >= QSearchRampagePruningDepth && isQueenAttacked {
+		victim0 := board.PieceAt(moves[0].To())
+		// If the top-rated move is not a queen capture, likely a promo, then delay rampage pruning
+		if victim0 == dragon.Queen {
+			stats.QRampagePrunes++
+			var move dragon.Move
+			for nMovesToUse, move = range moves {
+				victim := board.PieceAt(move.To())
+				if victim != dragon.Queen {
+					break;
+				}
+			}
+		}
+	}
+
+	return nMovesToUse
 }
 
 
@@ -768,7 +803,7 @@ func ResetQtt() {
 // Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
 // TODO - include moving away from attacks too?
-func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp, bool) {
+func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp, bool) {
 
 	stats.QNodes++
 	stats.QNonLeafs++
@@ -855,22 +890,30 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			bestMove, bestEval = NoMove, staticNegaEval
 		}
 	} else {
+		// Usually same as len(legalMoves) unless we prune the move list, for example queen rampage pruning
+		nMovesToUse := len(legalMoves)
+		
 		// Sort the moves heuristically
-		// TODO - currently overrides killer move so no point enabling both
 		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
-			orderQSearchMoves(board, legalMoves)
+			nMovesToUse = orderQSearchMoves(board, legalMoves, depthFromQRoot, stats)
 		}
 		
 		// We're quiesced as long as all children (we visit) are quiesced.
 		isQuiesced := true
 
-		// Place killer-move (or deep killer move) first if it's there
-		// TODO include QTT move
-		killer, usingDeepKiller := prioritiseKillerMove(legalMoves, killer, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+		usingDeepKiller := false
+		if(UseQKillerMoves) {
+			// Place killer-move (or deep killer move) first if it's there
+			// TODO include QTT move
+			// TODO doesn't mix well with queen rampage pruning unless we only look for killer move in the pruned list
+			killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+		}
 		
 		childKiller := NoMove
 		
-		for _, move := range legalMoves {
+		for i := 0; i < nMovesToUse; i++ {
+			move := legalMoves[i]
+			
 			// Make the move
 			moveInfo := board.Apply2(move)
 			
@@ -887,7 +930,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 				isQuiesced = false
 			} else {
 				var isChildQuiesced bool
-				childKiller, eval, isChildQuiesced = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
+				childKiller, eval, isChildQuiesced = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
 				eval = -eval // back to our perspective
 				isQuiesced = isQuiesced && isChildQuiesced
 			}
@@ -906,7 +949,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-				if bestMove == killer {
+				if UseQKillerMoves && bestMove == killer {
 					if usingDeepKiller {
 						stats.QDeepKillerCuts++
 					} else {
