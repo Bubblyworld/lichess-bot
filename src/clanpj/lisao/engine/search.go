@@ -654,6 +654,11 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
 	}
 
+	// Sort the moves heuristically
+	if UseMoveOrdering && len(legalMoves) > 1 {
+		orderMoves(board, legalMoves, killer)
+	}
+		
 	bestMove := NoMove
 	bestEval := BlackCheckMateEval
 	childKiller := NoMove

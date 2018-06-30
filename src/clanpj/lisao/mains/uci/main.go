@@ -40,6 +40,7 @@ func uciLoop() {
 			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var NegaMax var AlphaBeta var NegAlphaBeta")
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
+			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
 			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
@@ -97,6 +98,15 @@ func uciLoop() {
 					engine.UseDeltaEval = false
 				default:
 					fmt.Println("info string Unrecognised UseDeltaEval option:", tokens[4])
+				}
+			case "usemoveordering":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseMoveOrdering = true
+				case "false":
+					engine.UseMoveOrdering = false
+				default:
+					fmt.Println("info string Unrecognised UseMoveOrdering option:", tokens[4])
 				}
 			case "usekillermoves":
 				switch strings.ToLower(tokens[4]) {
