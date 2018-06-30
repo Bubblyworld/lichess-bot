@@ -53,11 +53,12 @@ const (
 var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 6
 var UseDeltaEval = true
+var UseMoveOrdering = true
 var UseKillerMoves = true
 var UseDeepKillerMoves = true       // only valid if UseKillerMoves == true
 var UseQSearch = true
 var QSearchDepth = 12
-var UseQSearchTT = false
+var UseQSearchTT = true
 var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
@@ -711,6 +712,9 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 	return bestMove, bestEval
 }
 
+// Killer move is prefered to all others
+const killerValue uint8 = 255
+
 // Indexed by promo piece type - only N, B, R, Q valid
 var promoMOValue = [8]uint8 {0, 0, /*N*/105, /*B*/103, /*R*/104, /*Q*/109, 0, 0}
 
@@ -720,7 +724,7 @@ var promoMOValue = [8]uint8 {0, 0, /*N*/105, /*B*/103, /*R*/104, /*Q*/109, 0, 0}
 // TODO boost moves that have danger of take-back, e.g. rook takes rook
 var captureMOValue = [8][8]uint8 {
 	/*mover*/
- 	/*Nothing*/ {0,  9,  7,  6,  5,  4,  8, 0}, // check evasion ordering
+ 	/*Nothing*/ {0,  9,  7,  6,  5,  4,  8, 0}, // non-capture move ordering - TODO???
 	/*Pawn*/    {0, 19, 17, 16, 15, 14, 18, 0},
 	/*Knight*/  {0, 39, 37, 36, 35, 34, 38, 0},
 	/*Bishop*/  {0, 49, 47, 46, 45, 44, 48, 0},
@@ -754,17 +758,21 @@ func (mo *byMoValueDesc) Less(i, j int) bool {
 // 1. Promotions by promo type
 // 2. MMV-LVA for captures
 //     (most valuable victim first, then least-valuable attacker second)
-func orderQSearchMoves(board *dragon.Board, moves []dragon.Move) {
+func orderMoves(board *dragon.Board, moves []dragon.Move, killer dragon.Move) {
 	// Value of each move - nothing to do with any other eval, just a local ordering metric
 	values := make([]uint8, len(moves))
 	for i, move := range moves {
-		from, to := move.From(), move.To()
-		attacker := board.PieceAt(from)
-		// We miss en-passant but it's not worth the effort to do properly
-		victim := board.PieceAt(to)
-		promoPiece := move.Promote()
-
-		values[i] = promoMOValue[promoPiece] + captureMOValue[victim][attacker]
+		if move == killer {
+			values[i] = killerValue
+		} else {
+			from, to := move.From(), move.To()
+			attacker := board.PieceAt(from)
+			// We miss en-passant but it's not worth the effort to do properly
+			victim := board.PieceAt(to)
+			promoPiece := move.Promote()
+			
+			values[i] = promoMOValue[promoPiece] + captureMOValue[victim][attacker]
+		}
 	}
 
 	mo := byMoValueDesc{ moves, values}
@@ -794,11 +802,10 @@ func pruneQueenRampages(board *dragon.Board, moves []dragon.Move, depthFromQRoot
 	return nMovesToUse
 }
 
-
-
+// MUST be a power of 2 cos we use & instead of % for fast hash table index
 const QttSize = 64*1024
 //const QttSize = 256*1024
-//const QttSize = 262139 // largest prime < 256*1024
+
 // Want this to be per-thread, but for now we're single-threaded so global is ok
 var qtt []QSearchTTEntryT = make([]QSearchTTEntryT, QttSize)
 
@@ -842,7 +849,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	var qttMove = NoMove
 	
 	if UseQSearchTT {
-		qttEntry, isExactQttHit = probeQtt(qtt, board.Hash(), board.Wtomove, qDepthToGo)
+		qttEntry, isExactQttHit = probeQtt(qtt, board.Hash(), qDepthToGo)
 
 		if qttEntry != nil {
 			stats.QttHits++
@@ -905,17 +912,6 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		// Usually same as len(legalMoves) unless we prune the move list, for example queen rampage pruning
 		nMovesToUse := len(legalMoves)
 		
-		// Sort the moves heuristically
-		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
-			orderQSearchMoves(board, legalMoves)
-			if UseQSearchRampagePruning {
-				nMovesToUse = pruneQueenRampages(board, legalMoves, depthFromQRoot, stats)
-			}
-		}
-		
-		// We're quiesced as long as all children (we visit) are quiesced.
-		isQuiesced := true
-
 		usingDeepKiller := false
 		if(UseQKillerMoves) {
 			// Place killer-move (or deep killer move) first if it's there
@@ -924,6 +920,17 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
 		}
 		
+		// Sort the moves heuristically
+		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
+			orderMoves(board, legalMoves, killer)
+			if UseQSearchRampagePruning {
+				nMovesToUse = pruneQueenRampages(board, legalMoves, depthFromQRoot, stats)
+			}
+		}
+		
+		// We're quiesced as long as all children (we visit) are quiesced.
+		isQuiesced := true
+
 		childKiller := NoMove
 		
 		for i := 0; i < nMovesToUse; i++ {
@@ -992,7 +999,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	if UseQSearchTT {
 		if qttEntry == nil {
 			// Write a new QTT entry
-			writeQttEntry(qtt, board.Hash(), board.Wtomove, bestEval, bestMove, qDepthToGo, /*isLowerBound*/isBetaCutoff, isQuiesced)
+			writeQttEntry(qtt, board.Hash(), bestEval, bestMove, qDepthToGo, /*isLowerBound*/isBetaCutoff, isQuiesced)
 		} else {
 			// Update the existing QTT entry
 			updateQttEntry(qttEntry, bestEval, bestMove, qDepthToGo, /*isLowerBound*/isBetaCutoff, isQuiesced)
