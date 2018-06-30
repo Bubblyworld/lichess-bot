@@ -23,7 +23,7 @@ func qttIndex(qtt []QSearchTTEntryT, zobrist uint64) int {
 	return int(zobrist) & (len(qtt)-1)
 }
 
-func isHit(entry *QSearchTTEntryT, zobrist uint64) bool {
+func isQttHit(entry *QSearchTTEntryT, zobrist uint64) bool {
 	return entry.zobrist == zobrist
 }
 
@@ -85,7 +85,7 @@ func probeQtt(qtt []QSearchTTEntryT, zobrist uint64, qDepthToGo int) (*QSearchTT
 	index := qttIndex(qtt, zobrist) 
 	var entry *QSearchTTEntryT = &qtt[index]
 	
-	if isHit(entry, zobrist) {
+	if isQttHit(entry, zobrist) {
 		// update stats
 		entry.nHits++
 

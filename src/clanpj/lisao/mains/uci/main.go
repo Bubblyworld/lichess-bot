@@ -41,6 +41,7 @@ func uciLoop() {
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
 			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
+			fmt.Println("option name UseTT type check default", engine.UseTT)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
 			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
@@ -58,6 +59,8 @@ func uciLoop() {
 			// reset the board, in case the GUI skips 'position' after 'newgame'
 			board = dragon.ParseFen(dragon.Startpos)
 			// TODO reset the history table
+			// reset the TT
+			engine.ResetTT()
 			// reset the qsearch TT
 			engine.ResetQtt()
 
@@ -107,6 +110,15 @@ func uciLoop() {
 					engine.UseMoveOrdering = false
 				default:
 					fmt.Println("info string Unrecognised UseMoveOrdering option:", tokens[4])
+				}
+			case "usett":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseTT = true
+				case "false":
+					engine.UseTT = false
+				default:
+					fmt.Println("info string Unrecognised UseTT option:", tokens[4])
 				}
 			case "usekillermoves":
 				switch strings.ToLower(tokens[4]) {
@@ -400,12 +412,15 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 	fmt.Println()
 	fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
 	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	if engine.UseTT {
+		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-cuts:", perC(stats.TTCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
+	}
 	fmt.Print("info string    non-leafs by depth:")
 	for i := 0; i < engine.MaxDepthStats && i < engine.SearchDepth; i++ {
 		fmt.Printf(" %d: %s", i, perC(stats.NonLeafsAt[i], stats.NonLeafs))
 	}
 	fmt.Println()
-	fmt.Println("info string nodes:", stats.Nodes, "non-leafs:", stats.NonLeafs)
+	fmt.Println("info string nodes:", stats.Nodes, "non-leafs:", stats.NonLeafs, "all-nodes:", perC(stats.AllNodes, stats.NonLeafs))
 	// TODO proper checkmate score string
 	fmt.Println("info depth", engine.SearchDepth, "score cp", eval, "nodes", stats.Nodes, "pv", &bestMove)
 
