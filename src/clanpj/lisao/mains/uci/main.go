@@ -389,23 +389,23 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 	}
 
 	// Reverse order from which it appears in the UCI driver
-	fmt.Println("info string   qmates:", perC(stats.QMates, stats.QNonLeafs), "qpatcuts:", perC(stats.QPatCuts, stats.QNonLeafs), "qrampageprunes:", perC(stats.QRampagePrunes, stats.QNonLeafs), "qkillers:", perC(stats.QKillers, stats.QNonLeafs), "qkiller-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "qdeepkillers:", perC(stats.QDeepKillers, stats.QNonLeafs), "qdeepkillercuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
+	fmt.Println("info string   q-mates:", perC(stats.QMates, stats.QNonLeafs), "q-pat-cuts:", perC(stats.QPatCuts, stats.QNonLeafs), "q-rampage-prunes:", perC(stats.QRampagePrunes, stats.QNonLeafs), "q-killers:", perC(stats.QKillers, stats.QNonLeafs), "q-killer-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "q-deep-killers:", perC(stats.QDeepKillers, stats.QNonLeafs), "q-deep-killer-cuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
 	if engine.UseQSearchTT {
-		fmt.Println("info string   qtthits:", perC(stats.QttHits, stats.QNonLeafs), "qttdepthhits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-cuts:", perC(stats.QttCuts, stats.QNonLeafs), "qtttrueevals:", perC(stats.QttTrueEvals, stats.QNonLeafs))
+		fmt.Println("info string   qtt-hits:", perC(stats.QttHits, stats.QNonLeafs), "qtt-depth-hits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-cuts:", perC(stats.QttCuts, stats.QNonLeafs), "qtt-late-cuts:", perC(stats.QttLateCuts, stats.QNonLeafs), "qtt-true-evals:", perC(stats.QttTrueEvals, stats.QNonLeafs))
 	}
-	fmt.Print("info string    qnonleafs by depth:")
+	fmt.Print("info string    q-non-leafs by depth:")
 	for i := 0; i < engine.MaxQDepthStats && i < engine.QSearchDepth; i++ {
 		fmt.Printf(" %d: %s", i, perC(stats.QNonLeafsAt[i], stats.QNonLeafs))
 	}
 	fmt.Println()
-	fmt.Println("info string qnodes:", stats.QNodes, "qnonleafs:", stats.QNonLeafs, "qpats:", perC(stats.QPats, stats.QNonLeafs), "qquiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "qprunes:", perC(stats.QPrunes, stats.QNonLeafs))
-	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killercuts:", perC(stats.KillerCuts, stats.NonLeafs), "deepkillers:", perC(stats.DeepKillers, stats.NonLeafs), "deepkillercuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
-	fmt.Print("info string    nonleafs by depth:")
+	fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
+	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	fmt.Print("info string    non-leafs by depth:")
 	for i := 0; i < engine.MaxDepthStats && i < engine.SearchDepth; i++ {
 		fmt.Printf(" %d: %s", i, perC(stats.NonLeafsAt[i], stats.NonLeafs))
 	}
 	fmt.Println()
-	fmt.Println("info string nodes:", stats.Nodes, "nonleafs:", stats.NonLeafs)
+	fmt.Println("info string nodes:", stats.Nodes, "non-leafs:", stats.NonLeafs)
 	// TODO proper checkmate score string
 	fmt.Println("info depth", engine.SearchDepth, "score cp", eval, "nodes", stats.Nodes, "pv", &bestMove)
 

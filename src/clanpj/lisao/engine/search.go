@@ -35,6 +35,7 @@ type SearchStatsT struct {
 	QttHits uint64         // #qnodes with successful QTT probe
 	QttDepthHits uint64    // #qnodes where QTT hit was at the same depth
 	QttCuts uint64         // #qnodes with beta cutoff from QTT hit
+	QttLateCuts uint64     // #qnodes with beta cutoff from QTT hit
 	QttTrueEvals uint64    // #qnodes with QQT hits that are the same depth and are not a lower bound
 
 	NonLeafsAt [MaxDepthStats]uint64   // non-leafs by depth
@@ -648,17 +649,25 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 		return NoMove, negaMateEval(board, depthFromRoot)
 	}
 
-	usingDeepKiller := false
-	if(UseKillerMoves) {
-		// Place killer-move (or deep killer move) first if it's there
-		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
+	killerMove := NoMove
+	if UseKillerMoves {
+		killerMove = killer
+	}
+	deepKiller := NoMove
+	if UseDeepKillerMoves {
+		deepKiller = deepKillers[depthFromRoot]
 	}
 
 	// Sort the moves heuristically
-	if UseMoveOrdering && len(legalMoves) > 1 {
-		orderMoves(board, legalMoves, killer)
+	if UseQSearchMoveOrdering {
+		if len(legalMoves) > 1 {
+			orderMoves(board, legalMoves, NoMove/*TODO ttMove*/, killerMove, deepKiller, &stats.Killers, &stats.DeepKillers)
+		}
+	} else if UseKillerMoves {
+		// Place killer-move (or deep killer move) first if it's there
+		prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
 	}
-		
+
 	bestMove := NoMove
 	bestEval := BlackCheckMateEval
 	childKiller := NoMove
@@ -700,14 +709,12 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 		
 		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 		if alpha >= beta {
-			if UseKillerMoves && bestMove == killer {
-				if usingDeepKiller {
-					stats.DeepKillerCuts++
-				} else {
-					stats.KillerCuts++
-				}
-			}
 			// beta cut-off
+			if bestMove == killerMove {
+				stats.KillerCuts++
+			} else if bestMove == deepKiller {
+				stats.DeepKillerCuts++
+			}
 			deepKillers[depthFromRoot] = bestMove
 			return bestMove, bestEval
 		}
@@ -718,7 +725,11 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 }
 
 // Killer move is prefered to all others
-const killerValue uint8 = 255
+const ttMoveValue uint8 = 255
+// ...then the killer move
+const killerValue uint8 = 254
+// ...then the second (deep) killer
+const killer2Value uint8 = 253
 
 // Indexed by promo piece type - only N, B, R, Q valid
 var promoMOValue = [8]uint8 {0, 0, /*N*/105, /*B*/103, /*R*/104, /*Q*/109, 0, 0}
@@ -763,12 +774,18 @@ func (mo *byMoValueDesc) Less(i, j int) bool {
 // 1. Promotions by promo type
 // 2. MMV-LVA for captures
 //     (most valuable victim first, then least-valuable attacker second)
-func orderMoves(board *dragon.Board, moves []dragon.Move, killer dragon.Move) {
+func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, killer dragon.Move, killer2 dragon.Move, killersStat *uint64, deepKillersStat *uint64) {
 	// Value of each move - nothing to do with any other eval, just a local ordering metric
 	values := make([]uint8, len(moves))
 	for i, move := range moves {
-		if move == killer {
+		if move == ttMove {
+			values[i] = ttMoveValue
+		} else if move == killer {
+			*killersStat++
 			values[i] = killerValue
+		} else if move == killer2 {
+			*deepKillersStat++
+			values[i] = killer2Value
 		} else {
 			from, to := move.From(), move.To()
 			attacker := board.PieceAt(from)
@@ -917,20 +934,28 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		// Usually same as len(legalMoves) unless we prune the move list, for example queen rampage pruning
 		nMovesToUse := len(legalMoves)
 		
-		usingDeepKiller := false
-		if(UseQKillerMoves) {
-			// Place killer-move (or deep killer move) first if it's there
-			// TODO include QTT move
-			// TODO doesn't mix well with queen rampage pruning unless we only look for killer move in the pruned list
-			killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+		killerMove := NoMove
+		if UseQKillerMoves {
+			killerMove = killer
+		}
+		deepKiller := NoMove
+		if UseQDeepKillerMoves {
+			deepKiller = deepKillers[depthFromRoot]
 		}
 		
 		// Sort the moves heuristically
-		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
-			orderMoves(board, legalMoves, killer)
-			if UseQSearchRampagePruning {
-				nMovesToUse = pruneQueenRampages(board, legalMoves, depthFromQRoot, stats)
+		if UseQSearchMoveOrdering {
+			if len(legalMoves) > 1 {
+				orderMoves(board, legalMoves, qttMove, killerMove, deepKiller, &stats.QKillers, &stats.QDeepKillers)
+				if UseQSearchRampagePruning {
+					nMovesToUse = pruneQueenRampages(board, legalMoves, depthFromQRoot, stats)
+				}
 			}
+		} else if UseQKillerMoves {
+			// Place killer-move (or deep killer move) first if it's there
+			// TODO include QTT move
+			// TODO doesn't mix well with queen rampage pruning unless we only look for killer move in the pruned list
+			prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
 		}
 		
 		// We're quiesced as long as all children (we visit) are quiesced.
@@ -976,14 +1001,14 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-				if UseQKillerMoves && bestMove == killer {
-					if usingDeepKiller {
-						stats.QDeepKillerCuts++
-					} else {
-						stats.QKillerCuts++
-					}
-				}
 				// beta cut-off
+				if bestMove == qttMove {
+					stats.QttLateCuts++
+				} else if bestMove == killerMove {
+					stats.QKillerCuts++
+				} else if bestMove == deepKiller {
+					stats.QDeepKillerCuts++
+				}
 				isBetaCutoff = true
 				break
 			}

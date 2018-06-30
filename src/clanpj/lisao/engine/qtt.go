@@ -1,12 +1,8 @@
-// Transposition table implementation
+// Transposition table for Quiescence Search
 
 package engine
 
 import (
-	// "errors"
-	// "fmt"
-	// "time"
-
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
