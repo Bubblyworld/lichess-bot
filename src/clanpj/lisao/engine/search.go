@@ -9,6 +9,9 @@ import (
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
+const MaxDepthStats = 16
+const MaxQDepthStats = 16
+
 type SearchStatsT struct {
 	Nodes uint64           // #nodes visited
 	Mates uint64           // #true terminal nodes
@@ -19,7 +22,7 @@ type SearchStatsT struct {
 	DeepKillerCuts uint64  // #nodes with deep killer move cut
 	QNodes uint64          // #nodes visited in qsearch
 	QMates uint64          // #true terminal nodes in qsearch
-	QNonLeafs uint64       // #non-leaf qnodes 
+	QNonLeafs uint64       // #non-leaf qnodes
 	QKillers uint64        // #qnodes with killer move available
 	QKillerCuts uint64     // #qnodes with killer move cut
 	QDeepKillers uint64    // #nodes with deep killer move available
@@ -33,6 +36,9 @@ type SearchStatsT struct {
 	QttDepthHits uint64    // #qnodes where QTT hit was at the same depth
 	QttCuts uint64         // #qnodes with beta cutoff from QTT hit
 	QttTrueEvals uint64    // #qnodes with QQT hits that are the same depth and are not a lower bound
+
+	NonLeafsAt [MaxDepthStats]uint64   // non-leafs by depth
+	QNonLeafsAt [MaxQDepthStats]uint64 // q-search non-leafs by depth
 }
 	
 
@@ -50,13 +56,13 @@ var UseDeltaEval = true
 var UseKillerMoves = true
 var UseDeepKillerMoves = true       // only valid if UseKillerMoves == true
 var UseQSearch = true
-var QSearchDepth = 8
+var QSearchDepth = 12
 var UseQSearchTT = false
 var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
 var UseQKillerMoves = true
-var UseQDeepKillerMoves = false     // only valid if UseQKillerMoves == true
+var UseQDeepKillerMoves = true     // only valid if UseQKillerMoves == true
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {
@@ -628,6 +634,9 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 
 	stats.Nodes++
 	stats.NonLeafs++
+	if depthFromRoot < MaxDepthStats {
+		stats.NonLeafsAt[depthFromRoot]++
+	}
 
 	// Generate all legal moves - thanks dragontoothmg!
 	legalMoves := board.GenerateLegalMoves()
@@ -740,16 +749,14 @@ func (mo *byMoValueDesc) Less(i, j int) bool {
 	return mo.values[i] >  mo.values[j]
 }
 
-// Order q-search moves heuristically. Also does rampage move pruning.
+// Order q-search moves heuristically.
 // Preference is:
 // 1. Promotions by promo type
 // 2. MMV-LVA for captures
 //     (most valuable victim first, then least-valuable attacker second)
-// Returns the number of moves to look at - except for rampage pruning.
-func orderQSearchMoves(board *dragon.Board, moves []dragon.Move, qDepthFromRoot int, stats *SearchStatsT) int {
+func orderQSearchMoves(board *dragon.Board, moves []dragon.Move) {
 	// Value of each move - nothing to do with any other eval, just a local ordering metric
 	values := make([]uint8, len(moves))
-	isQueenAttacked := false
 	for i, move := range moves {
 		from, to := move.From(), move.To()
 		attacker := board.PieceAt(from)
@@ -758,16 +765,18 @@ func orderQSearchMoves(board *dragon.Board, moves []dragon.Move, qDepthFromRoot 
 		promoPiece := move.Promote()
 
 		values[i] = promoMOValue[promoPiece] + captureMOValue[victim][attacker]
-		if victim == dragon.Queen {
-			isQueenAttacked = true
-		}
 	}
 
 	mo := byMoValueDesc{ moves, values}
 	sort.Sort(&mo)
+}
 
+// Do rampage move pruning.
+// Note: assumes queen captures appear first in the moves list which is true for MVV-LVA.
+// Returns the number of moves to look at.
+func pruneQueenRampages(board *dragon.Board, moves []dragon.Move, depthFromQRoot int, stats *SearchStatsT) int {
 	nMovesToUse := len(moves)
-	if UseQSearchRampagePruning && qDepthFromRoot >= QSearchRampagePruningDepth && isQueenAttacked {
+	if depthFromQRoot >= QSearchRampagePruningDepth {
 		victim0 := board.PieceAt(moves[0].To())
 		// If the top-rated move is not a queen capture, likely a promo, then delay rampage pruning
 		if victim0 == dragon.Queen {
@@ -787,7 +796,7 @@ func orderQSearchMoves(board *dragon.Board, moves []dragon.Move, qDepthFromRoot 
 
 
 
-const QttSize = 16*1024
+const QttSize = 64*1024
 //const QttSize = 256*1024
 //const QttSize = 262139 // largest prime < 256*1024
 // Want this to be per-thread, but for now we're single-threaded so global is ok
@@ -807,6 +816,9 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 
 	stats.QNodes++
 	stats.QNonLeafs++
+	if depthFromQRoot < MaxQDepthStats {
+		stats.QNonLeafsAt[depthFromQRoot]++
+	}
 
 	// Stand pat - equivalent to considering the null move as a valid move.
 	// Essentially the player to move doesn't _have_ to make a 'noisy' move - assuming that there is a quiet move available.
@@ -895,7 +907,10 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		
 		// Sort the moves heuristically
 		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
-			nMovesToUse = orderQSearchMoves(board, legalMoves, depthFromQRoot, stats)
+			orderQSearchMoves(board, legalMoves)
+			if UseQSearchRampagePruning {
+				nMovesToUse = pruneQueenRampages(board, legalMoves, depthFromQRoot, stats)
+			}
 		}
 		
 		// We're quiesced as long as all children (we visit) are quiesced.
@@ -913,30 +928,30 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		
 		for i := 0; i < nMovesToUse; i++ {
 			move := legalMoves[i]
-			
-			// Make the move
-			moveInfo := board.Apply2(move)
-			
-			newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
-			
+
 			// Get the (deep) eval
 			var eval EvalCp
+			newNegaStaticEval := staticNegaEval + NegaFastEvalDelta(board, move)
+
 			if qDepthToGo <= 1 {
 				stats.QNodes++
 				stats.QPrunes++
-				// Ignore mate check to avoid generating moves at all leaf nodes
-				eval = newNegaStaticEval
 				// We hit max depth before quiescing
 				isQuiesced = false
+				// Ignore mate check to avoid generating moves at all leaf nodes
+				eval = newNegaStaticEval
 			} else {
+				// Make the move
+				moveInfo := board.Apply2(move)
+				
 				var isChildQuiesced bool
 				childKiller, eval, isChildQuiesced = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
 				eval = -eval // back to our perspective
 				isQuiesced = isQuiesced && isChildQuiesced
-			}
 			
-			// Take back the move
-			moveInfo.Unapply()
+				// Take back the move
+				moveInfo.Unapply()
+			}
 			
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 			if eval > bestEval {

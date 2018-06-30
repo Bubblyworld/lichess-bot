@@ -16,7 +16,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0rp Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0fe2 Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -383,8 +383,18 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 	if engine.UseQSearchTT {
 		fmt.Println("info string   qtthits:", perC(stats.QttHits, stats.QNonLeafs), "qttdepthhits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-cuts:", perC(stats.QttCuts, stats.QNonLeafs), "qtttrueevals:", perC(stats.QttTrueEvals, stats.QNonLeafs))
 	}
+	fmt.Print("info string    qnonleafs by depth:")
+	for i := 0; i < engine.MaxQDepthStats && i < engine.QSearchDepth; i++ {
+		fmt.Printf(" %d: %s", i, perC(stats.QNonLeafsAt[i], stats.QNonLeafs))
+	}
+	fmt.Println()
 	fmt.Println("info string qnodes:", stats.QNodes, "qnonleafs:", stats.QNonLeafs, "qpats:", perC(stats.QPats, stats.QNonLeafs), "qquiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "qprunes:", perC(stats.QPrunes, stats.QNonLeafs))
 	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killercuts:", perC(stats.KillerCuts, stats.NonLeafs), "deepkillers:", perC(stats.DeepKillers, stats.NonLeafs), "deepkillercuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	fmt.Print("info string    nonleafs by depth:")
+	for i := 0; i < engine.MaxDepthStats && i < engine.SearchDepth; i++ {
+		fmt.Printf(" %d: %s", i, perC(stats.NonLeafsAt[i], stats.NonLeafs))
+	}
+	fmt.Println()
 	fmt.Println("info string nodes:", stats.Nodes, "nonleafs:", stats.NonLeafs)
 	// TODO proper checkmate score string
 	fmt.Println("info depth", engine.SearchDepth, "score cp", eval, "nodes", stats.Nodes, "pv", &bestMove)
