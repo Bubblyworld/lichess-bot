@@ -45,6 +45,7 @@ func uciLoop() {
 			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
 			fmt.Println("option name UseTT type check default", engine.UseTT)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
+			fmt.Println("option name UsePosRepetition type check default", engine.UsePosRepetition)
 			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
 			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
 			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
@@ -60,7 +61,8 @@ func uciLoop() {
 		case "ucinewgame":
 			// reset the board, in case the GUI skips 'position' after 'newgame'
 			board = dragon.ParseFen(dragon.Startpos)
-			// TODO reset the history table
+			// reset the history table
+			ht = make(engine.HistoryTableT)
 			// reset the TT
 			engine.ResetTT()
 			// reset the qsearch TT
@@ -145,6 +147,15 @@ func uciLoop() {
 					engine.UseKillerMoves = false
 				default:
 					fmt.Println("info string Unrecognised UseKillerMoves option:", tokens[4])
+				}
+			case "useposrepetition":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UsePosRepetition = true
+				case "false":
+					engine.UsePosRepetition = false
+				default:
+					fmt.Println("info string Unrecognised UsePosRepetition option:", tokens[4])
 				}
 			case "usedeepkillermoves":
 				switch strings.ToLower(tokens[4]) {
@@ -374,10 +385,11 @@ func uciLoop() {
 				fmt.Println("info string Malformed position command")
 				continue
 			}
-			//search.HistoryMap = make(map[uint64]int) // reset the history map
+			// reset the history map
+			ht = make(engine.HistoryTableT)
 			if strings.ToLower(posScanner.Text()) == "startpos" {
 				board = dragon.ParseFen(dragon.Startpos)
-				//search.HistoryMap[board.Hash()]++ // record that this state has occurred
+				ht.Add(board.Hash()) // record that this state has occurred
 				posScanner.Scan() // advance the scanner to leave it in a consistent state
 			} else if strings.ToLower(posScanner.Text()) == "fen" {
 				fenstr := ""
@@ -389,7 +401,7 @@ func uciLoop() {
 					continue
 				}
 				board = dragon.ParseFen(fenstr)
-				//search.HistoryMap[board.Hash()]++ // record that this state has occurred
+				ht.Add(board.Hash()) // record that this state has occurred
 			} else {
 				fmt.Println("info string Invalid position subcommand")
 				continue
@@ -419,7 +431,7 @@ func uciLoop() {
 					}
 				}
 				board.Apply(nextMove)
-				//search.HistoryMap[board.Hash()]++
+				ht.Add(board.Hash()) // record that this state has occurred
 			}
 		default:
 			fmt.Println("info string Unknown command:", line)
@@ -430,6 +442,9 @@ func uciLoop() {
 func perC(n uint64, N uint64) string {
 	return fmt.Sprintf("%d [%.2f%%]", n, float64(n)/float64(N)*100)
 }
+
+// This MUST be per-search-thread but for now we're single-threaded so global is fine.
+var ht engine.HistoryTableT = make(engine.HistoryTableT)
 
 // We use a shared variable using golang sync mechanisms for atomic shared operation.
 // When timeOut != 0 then we bail on the search.
@@ -451,7 +466,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	start := time.Now()
 
 	// Search for the winning move!
-	bestMove, eval, stats, finalDepth, _ := engine.Search(board, depth, timeoutMs, &timeout)
+	bestMove, eval, stats, finalDepth, _ := engine.Search(board, ht, depth, timeoutMs, &timeout)
 
 	elapsedSecs := time.Since(start).Seconds()
 
@@ -483,7 +498,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 		fmt.Printf(" %d: %s", i, perC(stats.NonLeafsAt[i], stats.NonLeafs))
 	}
 	fmt.Println()
-	fmt.Println("info string nodes:", stats.Nodes, "non-leafs:", stats.NonLeafs, "all-nodes:", perC(stats.AllNodes, stats.NonLeafs))
+	fmt.Println("info string nodes:", stats.Nodes, "non-leafs:", stats.NonLeafs, "all-nodes:", perC(stats.AllNodes, stats.NonLeafs), "pos-repetitions:", perC(stats.PosRepetitions, stats.Nodes))
 	// TODO proper checkmate score string
 	fmt.Println("info depth", finalDepth, "score cp", eval, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", &bestMove)
 

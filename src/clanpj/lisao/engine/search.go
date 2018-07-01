@@ -22,6 +22,7 @@ type SearchStatsT struct {
 	KillerCuts uint64      // #nodes with killer move cut
 	DeepKillers uint64     // #nodes with deep killer move available
 	DeepKillerCuts uint64  // #nodes with deep killer move cut
+	PosRepetitions uint64  // #nodes with repeated position
 	TTHits uint64          // #nodes with successful TT probe
 	TTDepthHits uint64     // #nodes where TT hit was at the same depth
 	TTCuts uint64          // #nodes with beta cutoff from TT hit
@@ -64,8 +65,9 @@ var SearchCutoffPercent = 25        // If we've used more than this percentage o
 var UseDeltaEval = true
 var UseMoveOrdering = true
 var UseKillerMoves = true
-var UseTT = true
 var UseDeepKillerMoves = true       // only valid if UseKillerMoves == true
+var UseTT = true
+var UsePosRepetition = true
 var UseQSearch = true
 var QSearchDepth = 12
 var UseQSearchTT = true
@@ -105,7 +107,7 @@ func isTimedOut(timeout *uint32) bool {
 // If targetTimeMs != 0 then we try to limit tame waste by returning early from a full search at some depth when
 //   we reckon there is not enough time to do the full next-level search.
 // Return best-move, eval, stats, final-depth, error
-func Search(board *dragon.Board, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, error) {
+func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, error) {
 	var deepKillers [MaxDepth]dragon.Move
 	var stats SearchStatsT
 	var bestMove = NoMove
@@ -161,7 +163,7 @@ func Search(board *dragon.Board, depth int, targetTimeMs int, timeout *uint32) (
 		case NegAlphaBeta:
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = negAlphaBeta(board, depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, staticNegaEval, fullBestMove, deepKillers[:], &stats, timeout)
+			bestMove, negaEval = negAlphaBeta(board, ht, depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, staticNegaEval, fullBestMove, deepKillers[:], &stats, timeout)
 			eval = negaEval
 			if !board.Wtomove {
 				eval = -negaEval
@@ -749,7 +751,7 @@ func ResetTT() {
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
 	if isTimedOut(timeout) {
@@ -847,12 +849,19 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 		for _, move := range legalMoves {
 			// Make the move
 			moveInfo := board.Apply2(move)
+			// Add to the move history
+			repetitions := ht.Add(board.Hash())
 			
 			newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
 			
 			// Get the (deep) eval
 			var eval EvalCp
-			if depthToGo <= 1 {
+			// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
+			// Thsi reduces the search tree a bit and is common practice in chess engines
+			if UsePosRepetition && repetitions > 1 {
+				stats.PosRepetitions++
+				eval = DrawEval
+			} else if depthToGo <= 1 {
 				stats.Nodes ++
 				if UseQSearch {
 					// Quiesce
@@ -862,10 +871,12 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 					eval = newNegaStaticEval
 				}
 			} else {
-				childKiller, eval = negAlphaBeta(board, depthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats, timeout)
+				childKiller, eval = negAlphaBeta(board, ht, depthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats, timeout)
 				eval = -eval // back to our perspective
 			}
 			
+			// Remove from the move history
+			ht.Remove(board.Hash())
 			// Take back the move
 			moveInfo.Unapply()
 		
