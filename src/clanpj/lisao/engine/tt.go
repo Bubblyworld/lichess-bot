@@ -86,6 +86,8 @@ func probeTT(tt []TTEntryT, zobrist uint64, depthToGo int) (*TTEntryT, bool) {
 		// It's an exact hit if we're at the same depth.
 		// Most engines are happy to use cached results from previous deeper searches,
 		//   but we require precise depth match so that we retain exact behaviour parity with no TT.
+		// Also our eval is unstable between odd/even plies which would make deeper results from
+		//   different parity depths quite inaccurate.
 		isExactHit := depthToGo == int(entry.depthToGo)
 
 		return entry, isExactHit

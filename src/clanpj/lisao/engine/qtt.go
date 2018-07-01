@@ -92,6 +92,8 @@ func probeQtt(qtt []QSearchTTEntryT, zobrist uint64, qDepthToGo int) (*QSearchTT
 		// It's an exact hit if we're at the same depth.
 		// Most engines are happy to use cached results from previous deeper searches,
 		//   but we require precise depth match so that we retain exact behaviour parity with no QTT.
+		// Also our eval is unstable between odd/even plies which would make deeper results from
+		//   different parity depths quite inaccurate.
 		isExactHit := qDepthToGo == int(entry.qDepthToGo)
 		//    ... or if this is a fully quiesced result
 		isExactHit = isExactHit || qDepthToGo > int(entry.qDepthToGo) && entry.isQuiesced

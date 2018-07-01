@@ -4,7 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	// "time"
+	"sync/atomic"
+	"time"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
@@ -89,57 +90,114 @@ func SearchAlgorithmString() string {
 	}
 }
 
+const MinDepth = 1
 const MaxDepth = 1024
 const NoMove dragon.Move = 0
 
+func isTimedOut(timeout *uint32) bool {
+	return atomic.LoadUint32(timeout) != 0
+}
+
 // Return eval from white's perspective, and the best move plus some search stats
-func Search(board *dragon.Board) (dragon.Move, EvalCp, SearchStatsT, error) {
+// Does iterative deepening until depth or timeout
+// Return best-move, eval, stats, final-depth, error
+func Search(board *dragon.Board, depth int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, error) {
 	var deepKillers [MaxDepth]dragon.Move
-	var searchStats SearchStatsT
+	var stats SearchStatsT
 	var bestMove = NoMove
+	var eval EvalCp = 0
 	var staticEval = StaticEval(board)
 	var staticNegaEval = staticEval
 	if !board.Wtomove {
 		staticNegaEval = -staticEval
 	}
-	var eval EvalCp = 0
 
-	switch SearchAlgorithm {
-	case MiniMax:
-		fmt.Println("info string Using MiniMax")
-		bestMove, eval = miniMax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, staticEval, &searchStats)
+	// Results from last full search.
+	// TODO - it should be possible to get valid results from a partial search but I'm too dumb to work it out at the moment.
+	var fullDepth = 0
+	var fullBestMove = NoMove
+	var fullEval EvalCp = 0
+	// TODO our eval is somewhat unstable between odd/even plies, so we smooth this by returning our
+	//   final eval as the average of the evals for the last two plies.
+	var prevFullEval EvalCp = 0
+	
+	// Best results from previous depth in case the timeout depth didn't get as far as returning a result
 
-	case NegaMax:
-		fmt.Println("info string Using NegaMax")
-		var negaEval EvalCp
-		bestMove, negaEval = negaMax(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, staticNegaEval, &searchStats)
-		eval = negaEval
-		if !board.Wtomove {
-			eval = -negaEval
-		}
-
-	case AlphaBeta:
-		fmt.Println("info string Using AlphaBeta")
-		bestMove, eval = alphaBeta(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, staticEval, NoMove, deepKillers[:], &searchStats)
-
-	case NegAlphaBeta:
-		fmt.Println("info string Using NegAlphaBeta")
-		var negaEval EvalCp
-		bestMove, negaEval = negAlphaBeta(board, /*depthToGo*/SearchDepth, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, staticNegaEval, NoMove, deepKillers[:], &searchStats)
-		eval = negaEval
-		if !board.Wtomove {
-			eval = -negaEval
-		}
-
-	default:
-		return NoMove, 0, searchStats, errors.New("bot: unrecognised search algorithm")
+	var maxDepthToGo = MaxDepth
+	if depth > 0 {
+		maxDepthToGo = depth
 	}
 
+	fmt.Println("info string using", SearchAlgorithmString(), "max depth", maxDepthToGo)
+
+	var depthToGo int
+	// Iterative deepening
+	for depthToGo = MinDepth; depthToGo <= maxDepthToGo; depthToGo++ {
+
+		// Time the search
+		start := time.Now()
+
+		switch SearchAlgorithm {
+		case MiniMax:
+			bestMove, eval = miniMax(board, depthToGo, /*depthFromRoot*/0, staticEval, &stats, timeout)
+			
+		case NegaMax:
+			var negaEval EvalCp
+			bestMove, negaEval = negaMax(board, depthToGo, /*depthFromRoot*/0, staticNegaEval, &stats, timeout)
+			eval = negaEval
+			if !board.Wtomove {
+				eval = -negaEval
+			}
+			
+		case AlphaBeta:
+			// Use the best move from the previous depth as the killer move for this depth
+			bestMove, eval = alphaBeta(board, depthToGo, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, staticEval, fullBestMove, deepKillers[:], &stats, timeout)
+			
+		case NegAlphaBeta:
+			// Use the best move from the previous depth as the killer move for this depth
+			var negaEval EvalCp
+			bestMove, negaEval = negAlphaBeta(board, depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, staticNegaEval, fullBestMove, deepKillers[:], &stats, timeout)
+			eval = negaEval
+			if !board.Wtomove {
+				eval = -negaEval
+			}
+			
+		default:
+		return NoMove, 0, stats, 0, errors.New("bot: unrecognised search algorithm")
+		}
+
+		elapsedSecs := time.Since(start).Seconds()
+
+		// Have we timed out? - if so, then ignore the results for this depth - it's a partial search
+		// TODO - it should be possible to get valid results from a partial search but I'm too dumb at the moment :(
+		if isTimedOut(timeout) {
+			break
+		}
+
+		// Reduce the output noise
+		if maxDepthToGo <=4 || depthToGo > 4 {
+			// UCI wants eval always from white perspective
+			evalForWhite := eval
+			if !board.Wtomove {
+				evalForWhite = -eval
+			}
+			// Print summary stats for the depth - slightly inaccurate because it includes accumulation of previous depths
+			fmt.Println("info depth", depthToGo, "score cp", evalForWhite, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", &bestMove)
+		}
+
+		fullBestMove = bestMove
+		prevFullEval = fullEval
+		fullEval = eval
+		fullDepth = depthToGo
+	}
+
+	// If we didn't get a move at all then barf
 	if bestMove == NoMove {
-		return NoMove, 0, searchStats, errors.New("bot: no legal move found in search")
+		return NoMove, 0, stats, depthToGo, errors.New("bot: no legal move found in search")
 	}
 
-	return bestMove, eval, searchStats, nil
+	// We smooth the odd/even instability by using the average eval of the last two depths
+	return fullBestMove, (fullEval + prevFullEval)/2, stats, fullDepth, nil
 }
 
 // Return the eval for stalemate or checkmate from white perspective.
@@ -193,7 +251,17 @@ func getNegaStaticEval(board* dragon.Board, oldNegaStaticEval EvalCp, move drago
 // Return the best eval attainable through minmax from the given
 //   position, along with the move leading to the principal variation.
 // Eval is given from white's perspective.
-func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval EvalCp, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval EvalCp, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+
+	// Bail if we've timed out
+	if isTimedOut(timeout) {
+		worstEval := WhiteCheckMateEval
+		if board.Wtomove {
+			worstEval = BlackCheckMateEval
+		}
+		// Return the worst possible eval (opponent checkmate) to invalidate this incomplete search branch
+		return NoMove, worstEval
+	}
 
 	stats.Nodes++
 	stats.NonLeafs++
@@ -227,7 +295,7 @@ func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval E
 			// Ignore mate check to avoid generating moves at all leaf nodes
 			eval = newStaticEval
 		} else {
-			_, eval = miniMax(board, depthToGo-1, depthFromRoot+1, newStaticEval, stats)
+			_, eval = miniMax(board, depthToGo-1, depthFromRoot+1, newStaticEval, stats, timeout)
 		}
 
 		// Take back the move
@@ -254,7 +322,13 @@ func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval E
 // Return the best eval attainable through negamax from the given
 //   position, along with the move leading to the principal variation.
 // Eval is given from current mover's perspective.
-func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticNegaEval EvalCp, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticNegaEval EvalCp, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+
+	// Bail if we've timed out
+	if isTimedOut(timeout) {
+		// Return the worst possible eval (opponent checkmate) to invalidate this incomplete search branch
+		return NoMove, YourCheckMateEval
+	}
 
 	stats.Nodes++
 	stats.NonLeafs++
@@ -284,7 +358,7 @@ func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticNegaEv
 			// Ignore mate check to avoid generating moves at all leaf nodes
 			eval = newNegaStaticEval
 		} else {
-			_, eval = negaMax(board, depthToGo-1, depthFromRoot+1, -newNegaStaticEval, stats)
+			_, eval = negaMax(board, depthToGo-1, depthFromRoot+1, -newNegaStaticEval, stats, timeout)
 			eval = -eval // back to our perspective
 		}
 
@@ -331,7 +405,17 @@ func prioritiseKillerMove(legalMoves []dragon.Move, killer dragon.Move, useDeepK
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+
+	// Bail if we've timed out
+	if isTimedOut(timeout) {
+		worstEval := WhiteCheckMateEval
+		if board.Wtomove {
+			worstEval = BlackCheckMateEval
+		}
+		// Return the worst possible eval (opponent checkmate) to invalidate this incomplete search branch
+		return NoMove, worstEval
+	}
 
 	stats.Nodes++
 	stats.NonLeafs++
@@ -375,7 +459,7 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 					eval = newStaticEval
 				}
 			} else {
-				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats)
+				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats, timeout)
 			}
 
 			// Take back the move
@@ -431,7 +515,7 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 					eval = newStaticEval
 				}
 			} else {
-				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats)
+				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats, timeout)
 			}
 			
 			// Take back the move
@@ -650,7 +734,13 @@ func ResetTT() {
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+
+	// Bail if we've timed out
+	if isTimedOut(timeout) {
+		// Return the worst possible eval (opponent checkmate) to invalidate this incomplete search branch
+		return NoMove, YourCheckMateEval
+	}
 
 	stats.Nodes++
 	stats.NonLeafs++
@@ -757,7 +847,7 @@ func negAlphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha E
 					eval = newNegaStaticEval
 				}
 			} else {
-				childKiller, eval = negAlphaBeta(board, depthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
+				childKiller, eval = negAlphaBeta(board, depthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats, timeout)
 				eval = -eval // back to our perspective
 			}
 			

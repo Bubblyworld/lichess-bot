@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
@@ -16,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0fe2 Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0tc Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -26,7 +27,6 @@ func uciLoop() {
 	scanner := bufio.NewScanner(os.Stdin)
 	board := dragon.ParseFen(dragon.Startpos) // the game board
 	// used for communicating with search routine
-	haltchannel := make(chan bool)
 	for scanner.Scan() {
 		line := scanner.Text()
 		tokens := strings.Fields(line)
@@ -213,8 +213,9 @@ func uciLoop() {
 			goScanner := bufio.NewScanner(strings.NewReader(line))
 			goScanner.Split(bufio.ScanWords)
 			goScanner.Scan() // skip the first token
-			var wtime, btime, winc, binc int
+			var movetime, wtime, btime, winc, binc int
 			var infinite bool
+			var depth int // if 0 then we're searching on time
 			var err error
 			for goScanner.Scan() {
 				nextToken := strings.ToLower(goScanner.Text())
@@ -222,6 +223,16 @@ func uciLoop() {
 				case "infinite":
 					infinite = true
 					continue
+				case "movetime":
+					if !goScanner.Scan() {
+						fmt.Println("info string Malformed go command option movetime")
+						continue
+					}
+					movetime, err = strconv.Atoi(goScanner.Text())
+					if err != nil {
+						fmt.Println("info string Malformed go command option; could not convert wtime")
+						continue
+					}
 				case "wtime":
 					if !goScanner.Scan() {
 						fmt.Println("info string Malformed go command option wtime")
@@ -262,23 +273,35 @@ func uciLoop() {
 						fmt.Println("info string Malformed go command option; could not convert binc")
 						continue
 					}
+				case "depth":
+					if !goScanner.Scan() {
+						fmt.Println("info string Malformed go command option depth")
+						continue
+					}
+					depth, err = strconv.Atoi(goScanner.Text())
+					if err != nil {
+						fmt.Println("info string Malformed go command option; could not convert depth")
+						continue
+					}
 				default:
 					fmt.Println("info string Unknown go subcommand", nextToken)
 					continue
 				}
 			}
-			stop := false
-			go uciSearch(&board, haltchannel, &stop)
+			go uciSearch(&board, depth)
 			// TODO (rpj) - work out how this unblocks in the case of infinite time???
-			if wtime != 0 && btime != 0 && !infinite { // If times are specified
-				var ourtime, opptime, ourinc, oppinc int
-				if board.Wtomove {
-					ourtime, opptime, ourinc, oppinc = wtime, btime, winc, binc
-				} else {
-					ourtime, opptime, ourinc, oppinc = btime, wtime, binc, winc
+			if (movetime != 0 || (wtime != 0 && btime != 0)) && !infinite { // If times are specified
+				timeoutMs := movetime
+				if movetime == 0 {
+					var ourtime, opptime, ourinc, oppinc int
+					if board.Wtomove {
+						ourtime, opptime, ourinc, oppinc = wtime, btime, winc, binc
+					} else {
+						ourtime, opptime, ourinc, oppinc = btime, wtime, binc, winc
+					}
+					timeoutMs = uciCalculateAllowedTimeMs(&board, ourtime, opptime, ourinc, oppinc)
 				}
-				allowedTime := uciCalculateAllowedTimeMs(&board, ourtime, opptime, ourinc, oppinc)
-				go uciSearchTimeout(haltchannel, allowedTime, &stop)
+				uciStartTimer(timeoutMs)
 			}
 		// case "secretparam": // secret parameters used for optimizing the evaluation function
 		// 	res, _ := strconv.Atoi(tokens[2])
@@ -322,7 +345,7 @@ func uciLoop() {
 		// 		}
 		// 	}
 		case "stop":
-			haltchannel <- true // TODO(dylhunn): stop deadlock on double stop
+			uciStop()
 		case "position":
 			posScanner := bufio.NewScanner(strings.NewReader(line))
 			posScanner.Split(bufio.ScanWords)
@@ -388,12 +411,33 @@ func perC(n uint64, N uint64) string {
 	return fmt.Sprintf("%d [%.2f%%]", n, float64(n)/float64(N)*100)
 }
 
+// We use a shared variable using golang sync mechanisms for atomic shared operation.
+// When timeOut != 0 then we bail on the search.
+// The time-out is typically controled by a Timer, except when in infinite search mode,
+//   or when explicitly cancelled with UCI stop command.
+var timeout uint32
+
+// Timer controlling the timeout variable
+var timeoutTimer *time.Timer
+
+
 // Lightweight wrapper around Lisao Search.
 // Prints the results (bestmove). TODO PV, stats
 // TODO - plumb timing and halt stuff properly
-func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
+func uciSearch(board *dragon.Board, depth int) {
+	// Reset the timeout
+	atomic.StoreUint32(&timeout, 0)
+	
+	// Time the search
+	start := time.Now()
+
 	// Ignore timing and just call the fixed depth search
-	bestMove, eval, stats, _ := engine.Search(board)
+	bestMove, eval, stats, finalDepth, _ := engine.Search(board, depth, &timeout)
+
+	elapsedSecs := time.Since(start).Seconds()
+
+	// Stop the timer in case this was an early-out return
+	uciStop()
 
 	// Eval is expected from the engine's perspective, but we generate it from white's perspective
 	if !board.Wtomove {
@@ -416,13 +460,13 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-cuts:", perC(stats.TTCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
 	}
 	fmt.Print("info string    non-leafs by depth:")
-	for i := 0; i < engine.MaxDepthStats && i < engine.SearchDepth; i++ {
+	for i := 0; i < engine.MaxDepthStats && i < finalDepth; i++ {
 		fmt.Printf(" %d: %s", i, perC(stats.NonLeafsAt[i], stats.NonLeafs))
 	}
 	fmt.Println()
 	fmt.Println("info string nodes:", stats.Nodes, "non-leafs:", stats.NonLeafs, "all-nodes:", perC(stats.AllNodes, stats.NonLeafs))
 	// TODO proper checkmate score string
-	fmt.Println("info depth", engine.SearchDepth, "score cp", eval, "nodes", stats.Nodes, "pv", &bestMove)
+	fmt.Println("info depth", finalDepth, "score cp", eval, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", &bestMove)
 
 	// Wait for the stop signal and print the result
 	// TODO do this properly
@@ -430,23 +474,31 @@ func uciSearch(board *dragon.Board, halt <-chan bool, stop *bool) {
 	fmt.Println("bestmove", &bestMove)
 }
 
-// After a certain period of time, sends a signal to halt the search, unless it has already been sent.
-// If the sleep time is 0, does nothing.
-// The bool pointer alreadyStopped should be the same as the one given to Search().
-func uciSearchTimeout(halt chan<- bool, ms int, alreadyStopped *bool) {
-	if ms == 0 {
+// Start the search timeout timer
+func uciStartTimer(timeoutMs int) {
+	if timeoutMs == 0 {
 		return
 	}
-	// TODO do this properly
-	time.Sleep(time.Duration(ms) * time.Millisecond)
-	if !(*alreadyStopped) { // don't send the halt signal if the search has already been stopped
-		halt <- true
-	}
+	// TODO - atomic!
+	timeoutTimer = time.AfterFunc(time.Duration(timeoutMs) * time.Millisecond, func() { uciStop() })
 }
 
-// Simple strategy - use 1/16th of the remaining time (which we currently ignore anyway :D )
+// Explicitly stop the search by canceling the timer and setting the timeout shared memory address.
+func uciStop() {
+	if timeoutTimer != nil {
+		// It may already have been stopped or timed out
+		timeoutTimer.Stop()
+		// TODO atomic!
+		timeoutTimer = nil
+	}
+		
+	// Notify search threads to bail
+	atomic.StoreUint32(&timeout, 1)
+}
+
+// Simple strategy - use 1/32nd of the remaining time
 func uciCalculateAllowedTimeMs(b *dragon.Board, ourtimeMs int, opptimeMs int, ourincMs int, oppincMs int) int {
-	result := ourtimeMs / 16
+	result := ourtimeMs / 32
 	if result <= 0 {
 		return ourincMs
 	}
