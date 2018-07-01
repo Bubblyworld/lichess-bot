@@ -39,6 +39,8 @@ func uciLoop() {
 			fmt.Println("id author Clan PJ")
 			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var NegaMax var AlphaBeta var NegAlphaBeta")
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
+			fmt.Println("option name SearchCutoffPercent type spin default", engine.SearchCutoffPercent, "min 1 max 100")
+			fmt.Println("option name TimeLeftPerMoveDivisor type spin default", TimeLeftPerMoveDivisor, "min 2 max 200")
 			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
 			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
 			fmt.Println("option name UseTT type check default", engine.UseTT)
@@ -92,6 +94,21 @@ func uciLoop() {
 					continue
 				}
 				engine.SearchDepth = res
+			case "searchcutoffpercent":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string SearchCutoffPercent value is not an int (", err, ")")
+					continue
+				}
+				engine.SearchCutoffPercent = res
+				fmt.Println("info string Search depth changes to", res)
+			case "timeleftpermovedivisor":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string TimeLeftPerMoveDivisor value is not an int (", err, ")")
+					continue
+				}
+				TimeLeftPerMoveDivisor = res
 				fmt.Println("info string Search depth changes to", res)
 			case "usedeltaeval":
 				switch strings.ToLower(tokens[4]) {
@@ -288,10 +305,10 @@ func uciLoop() {
 					continue
 				}
 			}
-			go uciSearch(&board, depth)
-			// TODO (rpj) - work out how this unblocks in the case of infinite time???
+
+			timeoutMs := 0
 			if (movetime != 0 || (wtime != 0 && btime != 0)) && !infinite { // If times are specified
-				timeoutMs := movetime
+				timeoutMs = movetime
 				if movetime == 0 {
 					var ourtime, opptime, ourinc, oppinc int
 					if board.Wtomove {
@@ -301,8 +318,11 @@ func uciLoop() {
 					}
 					timeoutMs = uciCalculateAllowedTimeMs(&board, ourtime, opptime, ourinc, oppinc)
 				}
-				uciStartTimer(timeoutMs)
 			}
+			// Start the timeout timer...
+			uciStartTimer(timeoutMs)
+			// Run the search in another thread.
+			go uciSearch(&board, depth, timeoutMs)
 		// case "secretparam": // secret parameters used for optimizing the evaluation function
 		// 	res, _ := strconv.Atoi(tokens[2])
 		// 	switch tokens[1] {
@@ -422,17 +442,16 @@ var timeoutTimer *time.Timer
 
 
 // Lightweight wrapper around Lisao Search.
-// Prints the results (bestmove). TODO PV, stats
-// TODO - plumb timing and halt stuff properly
-func uciSearch(board *dragon.Board, depth int) {
+// Prints the results (bestmove) and various stats.
+func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	// Reset the timeout
 	atomic.StoreUint32(&timeout, 0)
 	
 	// Time the search
 	start := time.Now()
 
-	// Ignore timing and just call the fixed depth search
-	bestMove, eval, stats, finalDepth, _ := engine.Search(board, depth, &timeout)
+	// Search for the winning move!
+	bestMove, eval, stats, finalDepth, _ := engine.Search(board, depth, timeoutMs, &timeout)
 
 	elapsedSecs := time.Since(start).Seconds()
 
@@ -468,9 +487,7 @@ func uciSearch(board *dragon.Board, depth int) {
 	// TODO proper checkmate score string
 	fmt.Println("info depth", finalDepth, "score cp", eval, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", &bestMove)
 
-	// Wait for the stop signal and print the result
-	// TODO do this properly
-	//*stop = <-halt
+	// Print the result
 	fmt.Println("bestmove", &bestMove)
 }
 
@@ -496,9 +513,12 @@ func uciStop() {
 	atomic.StoreUint32(&timeout, 1)
 }
 
-// Simple strategy - use 1/32nd of the remaining time
+// 1/16th of the time left per move seems aggressive, but we bail early most of the time due to SearchCutoffPercent
+var TimeLeftPerMoveDivisor = 16
+
+// Simple strategy - use fixed percentage of the remaining time
 func uciCalculateAllowedTimeMs(b *dragon.Board, ourtimeMs int, opptimeMs int, ourincMs int, oppincMs int) int {
-	result := ourtimeMs / 32
+	result := ourtimeMs / TimeLeftPerMoveDivisor
 	if result <= 0 {
 		return ourincMs
 	}

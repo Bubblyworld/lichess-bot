@@ -59,7 +59,8 @@ const (
 	NegAlphaBeta
 )
 var SearchAlgorithm = NegAlphaBeta
-var SearchDepth = 7
+var SearchDepth = 7                 // Ignored now that time control is implemented
+var SearchCutoffPercent = 25        // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
 var UseDeltaEval = true
 var UseMoveOrdering = true
 var UseKillerMoves = true
@@ -100,8 +101,11 @@ func isTimedOut(timeout *uint32) bool {
 
 // Return eval from white's perspective, and the best move plus some search stats
 // Does iterative deepening until depth or timeout
+// If depth param != 0 then we do fixed depth search.
+// If targetTimeMs != 0 then we try to limit tame waste by returning early from a full search at some depth when
+//   we reckon there is not enough time to do the full next-level search.
 // Return best-move, eval, stats, final-depth, error
-func Search(board *dragon.Board, depth int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, error) {
+func Search(board *dragon.Board, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, error) {
 	var deepKillers [MaxDepth]dragon.Move
 	var stats SearchStatsT
 	var bestMove = NoMove
@@ -128,12 +132,13 @@ func Search(board *dragon.Board, depth int, timeout *uint32) (dragon.Move, EvalC
 		maxDepthToGo = depth
 	}
 
+	originalStart := time.Now()
+
 	fmt.Println("info string using", SearchAlgorithmString(), "max depth", maxDepthToGo)
 
 	var depthToGo int
 	// Iterative deepening
 	for depthToGo = MinDepth; depthToGo <= maxDepthToGo; depthToGo++ {
-
 		// Time the search
 		start := time.Now()
 
@@ -189,6 +194,16 @@ func Search(board *dragon.Board, depth int, timeout *uint32) (dragon.Move, EvalC
 		prevFullEval = fullEval
 		fullEval = eval
 		fullDepth = depthToGo
+
+		// Bail early if we don't think we can get another full search level done
+		if targetTimeMs > 0 {
+			totalElapsedSecs := time.Since(originalStart).Seconds()
+			totalElapsedMs := int(totalElapsedSecs*1000)
+			cutoffMs := targetTimeMs*SearchCutoffPercent/100
+			if totalElapsedMs > cutoffMs {
+				break
+			}
+		}
 	}
 
 	// If we didn't get a move at all then barf
