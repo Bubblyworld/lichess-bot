@@ -124,8 +124,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 		staticNegaEval = -staticEval
 	}
 
-	// Results from last full search.
-	// TODO - it should be possible to get valid results from a partial search but I'm too dumb to work it out at the moment.
+	// Results from last full search or last valid partial search.
 	var fullDepth = 0
 	var fullBestMove = NoMove
 	var fullEval EvalCp = 0
@@ -181,14 +180,8 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 		elapsedSecs := time.Since(start).Seconds()
 
-		// Have we timed out? - if so, then ignore the results for this depth - it's a partial search
-		// TODO - it should be possible to get valid results from a partial search but I'm too dumb at the moment :(
-		if isTimedOut(timeout) {
-			break
-		}
-
 		// Reduce the output noise
-		if maxDepthToGo <=4 || depthToGo > 4 {
+		if maxDepthToGo <=4 || depthToGo > 4 && bestMove != NoMove {
 			// UCI wants eval always from white perspective
 			evalForWhite := eval
 			if !board.Wtomove {
@@ -198,11 +191,29 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 			fmt.Println("info depth", depthToGo, "score cp", evalForWhite, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", &bestMove)
 		}
 
+		// Have we timed out? If so, then ignore the results for this depth unless we got a valid partial result
+		if isTimedOut(timeout) {
+			fmt.Println("info string timed out in search for depth", depthToGo)
+			if bestMove == NoMove {
+				fmt.Println("info string no useful result before time-out at depth", depthToGo)
+				break
+			} else if SearchAlgorithm != NegAlphaBeta || !UseKillerMoves {
+				// Only NegAlphaBeta supports a valid partial result and only if UseKillerMoves is enabled
+				fmt.Println("info string ignoring partial search result - only supported for NegAlphaBeta with UseKillerMoves enabled", depthToGo)
+				break
+			}
+		}
+
 		fullBestMove = bestMove
 		prevFullEval = fullEval
 		fullEval = eval
 		fullDepth = depthToGo
 
+		// Then always bail on time-out
+		if isTimedOut(timeout) {
+			break
+		}
+		
 		// Bail early if we don't think we can get another full search level done
 		if targetTimeMs > 0 {
 			totalElapsedSecs := time.Since(originalStart).Seconds()
@@ -215,8 +226,8 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 	}
 
 	// If we didn't get a move at all then barf
-	if bestMove == NoMove {
-		return NoMove, 0, stats, depthToGo, errors.New("bot: no legal move found in search")
+	if fullBestMove == NoMove {
+		return NoMove, 0, stats, fullDepth, errors.New("bot: no legal move found in search")
 	}
 
 	// We smooth the odd/even instability by using the average eval of the last two depths
@@ -969,6 +980,11 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 			// Take back the move
 			moveInfo.Unapply()
 		
+			// Bail cleanly without polluting search results if we have timed out
+			if depthToGo > 1 && isTimedOut(timeout) {
+				break
+			}
+
 			// Maximise our eval.
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 			if eval > bestEval {
@@ -1006,23 +1022,26 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 		deepKillers[depthFromRoot] = bestMove
 	}
 	
-	// Update the TT
 	if UseTT {
-		evalType := TTEvalExact
-		if origBeta <= bestEval {
-			evalType = TTEvalLowerBound
-		} else if bestEval <= origAlpha {
-			evalType = TTEvalUpperBound
-		}
-		if ttEntry == nil {
-			// Write a new TT entry
-			writeTTEntry(tt, board.Hash(), bestEval, bestMove, depthToGo, evalType)
-		} else {
-			// Update the existing QTT entry
-			updateTTEntry(ttEntry, bestEval, bestMove, depthToGo, evalType)
+		// Update the TT - but only if the search was not truncated due to a time-out
+		if !isTimedOut(timeout) {
+			evalType := TTEvalExact
+			if origBeta <= bestEval {
+				evalType = TTEvalLowerBound
+			} else if bestEval <= origAlpha {
+				evalType = TTEvalUpperBound
+			}
+			if ttEntry == nil {
+				// Write a new TT entry
+				writeTTEntry(tt, board.Hash(), bestEval, bestMove, depthToGo, evalType)
+			} else {
+				// Update the existing QTT entry
+				updateTTEntry(ttEntry, bestEval, bestMove, depthToGo, evalType)
+			}
 		}
 	}
-	
+
+	// Regardless of a time-out this will still be valid - if bestMove == NoMove then we didn't complete any child branch
 	return bestMove, bestEval
 }
 
