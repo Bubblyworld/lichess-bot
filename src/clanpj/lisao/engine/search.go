@@ -72,11 +72,11 @@ var UseDeltaEval = true
 var UseMoveOrdering = true
 var UseKillerMoves = true
 var UseDeepKillerMoves = true       // only valid if UseKillerMoves == true
-var UseTT = false //true
+var UseTT = true
 var UsePosRepetition = true
 var UseQSearch = true
 var QSearchDepth = 12
-var UseQSearchTT = false //true
+var UseQSearchTT = true
 var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
