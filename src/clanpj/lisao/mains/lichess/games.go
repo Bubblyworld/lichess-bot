@@ -19,9 +19,11 @@ var botName = "Lisao"
 
 type Game struct {
 	ID         string
-	Moves      []string // List of moves in UCI format.
 	InitialFen string
 	WeAreWhite bool
+
+	Moves        []string // List of moves in UCI format.
+	HistoryTable engine.HistoryTableT
 
 	isPlaying bool
 	mutex     sync.Mutex
@@ -88,6 +90,8 @@ func playGame(state *State, game *Game) {
 		return
 	}
 	defer unlockGame(game)
+
+	game.HistoryTable = make(engine.HistoryTableT)
 
 	gameStateCh, err := state.client.StreamGameState(game.ID)
 	if err != nil {
@@ -234,7 +238,8 @@ func makeMove(state *State, game *Game) error {
 		return err
 	}
 
-	move, err := engine.Search(board)
+	var timeout uint32
+	move, _, _, _, err := engine.Search(board, game.HistoryTable, 0, 500, &timeout)
 	if err != nil {
 		return err
 	}
