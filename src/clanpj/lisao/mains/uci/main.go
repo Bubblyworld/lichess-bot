@@ -41,7 +41,6 @@ func uciLoop() {
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name SearchCutoffPercent type spin default", engine.SearchCutoffPercent, "min 1 max 100")
 			fmt.Println("option name TimeLeftPerMoveDivisor type spin default", TimeLeftPerMoveDivisor, "min 2 max 200")
-			fmt.Println("option name UseDeltaEval type check default", engine.UseDeltaEval)
 			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
 			fmt.Println("option name UseTT type check default", engine.UseTT)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
@@ -112,15 +111,6 @@ func uciLoop() {
 				}
 				TimeLeftPerMoveDivisor = res
 				fmt.Println("info string Search depth changes to", res)
-			case "usedeltaeval":
-				switch strings.ToLower(tokens[4]) {
-				case "true":
-					engine.UseDeltaEval = true
-				case "false":
-					engine.UseDeltaEval = false
-				default:
-					fmt.Println("info string Unrecognised UseDeltaEval option:", tokens[4])
-				}
 			case "usemoveordering":
 				switch strings.ToLower(tokens[4]) {
 				case "true":

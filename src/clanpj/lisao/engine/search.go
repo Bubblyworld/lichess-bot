@@ -68,7 +68,6 @@ const (
 var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 7                 // Ignored now that time control is implemented
 var SearchCutoffPercent = 25        // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
-var UseDeltaEval = true
 var UseMoveOrdering = true
 var UseKillerMoves = true
 var UseDeepKillerMoves = true       // only valid if UseKillerMoves == true
@@ -81,7 +80,7 @@ var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
 var UseQKillerMoves = true
-var UseQDeepKillerMoves = true     // only valid if UseQKillerMoves == true
+var UseQDeepKillerMoves = true      // only valid if UseQKillerMoves == true
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {
@@ -118,11 +117,6 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 	var stats SearchStatsT
 	var bestMove = NoMove
 	var eval EvalCp = 0
-	var staticEval = StaticEval(board)
-	var staticNegaEval = staticEval
-	if !board.Wtomove {
-		staticNegaEval = -staticEval
-	}
 
 	// Results from last full search or last valid partial search.
 	var fullDepth = 0
@@ -151,11 +145,11 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 		switch SearchAlgorithm {
 		case MiniMax:
-			bestMove, eval = miniMax(board, depthToGo, /*depthFromRoot*/0, staticEval, &stats, timeout)
+			bestMove, eval = miniMax(board, depthToGo, /*depthFromRoot*/0, &stats, timeout)
 			
 		case NegaMax:
 			var negaEval EvalCp
-			bestMove, negaEval = negaMax(board, depthToGo, /*depthFromRoot*/0, staticNegaEval, &stats, timeout)
+			bestMove, negaEval = negaMax(board, depthToGo, /*depthFromRoot*/0, &stats, timeout)
 			eval = negaEval
 			if !board.Wtomove {
 				eval = -negaEval
@@ -163,12 +157,12 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 			
 		case AlphaBeta:
 			// Use the best move from the previous depth as the killer move for this depth
-			bestMove, eval = alphaBeta(board, depthToGo, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, staticEval, fullBestMove, deepKillers[:], &stats, timeout)
+			bestMove, eval = alphaBeta(board, depthToGo, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, fullBestMove, deepKillers[:], &stats, timeout)
 			
 		case NegAlphaBeta:
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = negAlphaBeta(board, ht, depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, staticNegaEval, fullBestMove, deepKillers[:], &stats, timeout)
+			bestMove, negaEval = negAlphaBeta(board, ht, depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, fullBestMove, deepKillers[:], &stats, timeout)
 			eval = negaEval
 			if !board.Wtomove {
 				eval = -negaEval
@@ -181,7 +175,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 		elapsedSecs := time.Since(start).Seconds()
 
 		// Reduce the output noise
-		if maxDepthToGo <=4 || depthToGo > 4 && bestMove != NoMove {
+		if maxDepthToGo <= 4 || depthToGo > 0 && bestMove != NoMove {
 			// UCI wants eval always from white perspective
 			evalForWhite := eval
 			if !board.Wtomove {
@@ -260,32 +254,10 @@ func negaMateEval(board *dragon.Board, depthFromRoot int) EvalCp {
 	return DrawEval
 }
 
-// Return the new static eval from white's perspective - either by fast delta, or by full evaluation, depending on configuration
-func getStaticEval(board* dragon.Board, oldStaticEval EvalCp, move dragon.Move, moveInfo *dragon.MoveApplication) EvalCp {
-	if UseDeltaEval {
-		// Much faster
-		return oldStaticEval + EvalDelta(move, moveInfo, !board.Wtomove)
-	} else {
-		// For sanity check :P
-		return StaticEval(board)
-	}
-}
-
-// Return the new static eval from current mover's perspective - either by fast delta, or by full evaluation, depending on configuration
-func getNegaStaticEval(board* dragon.Board, oldNegaStaticEval EvalCp, move dragon.Move, moveInfo *dragon.MoveApplication) EvalCp {
-	if UseDeltaEval {
-		// Much faster
-		return oldNegaStaticEval + NegaEvalDelta(move, moveInfo, !board.Wtomove)
-	} else {
-		// For sanity check :P
-		return NegaStaticEval(board)
-	}
-}
-
 // Return the best eval attainable through minmax from the given
 //   position, along with the move leading to the principal variation.
 // Eval is given from white's perspective.
-func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval EvalCp, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
 	if isTimedOut(timeout) {
@@ -318,22 +290,20 @@ func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval E
 
 	for _, move := range legalMoves {
 		// Make the move
-		moveInfo := board.Apply2(move)
-
-		newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
+		unapply := board.Apply(move)
 
 		// Get the (deep) eval
 		var eval EvalCp
 		if depthToGo <= 1 {
 			stats.Nodes++
 			// Ignore mate check to avoid generating moves at all leaf nodes
-			eval = newStaticEval
+			eval = StaticEval(board)
 		} else {
-			_, eval = miniMax(board, depthToGo-1, depthFromRoot+1, newStaticEval, stats, timeout)
+			_, eval = miniMax(board, depthToGo-1, depthFromRoot+1, stats, timeout)
 		}
 
 		// Take back the move
-		moveInfo.Unapply()
+		unapply()
 
 		// If we're white, we try to maximise our eval. If we're black, we try to
 		// minimise our eval.
@@ -356,7 +326,7 @@ func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticEval E
 // Return the best eval attainable through negamax from the given
 //   position, along with the move leading to the principal variation.
 // Eval is given from current mover's perspective.
-func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticNegaEval EvalCp, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
 	if isTimedOut(timeout) {
@@ -381,23 +351,21 @@ func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, staticNegaEv
 
 	for _, move := range legalMoves {
 		// Make the move
-		moveInfo := board.Apply2(move)
-
-		newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
+		unapply := board.Apply(move)
 
 		// Get the (deep) eval
 		var eval EvalCp
 		if depthToGo <= 1 {
 			stats.Nodes++
 			// Ignore mate check to avoid generating moves at all leaf nodes
-			eval = newNegaStaticEval
+			eval = NegaStaticEval(board)
 		} else {
-			_, eval = negaMax(board, depthToGo-1, depthFromRoot+1, -newNegaStaticEval, stats, timeout)
-			eval = -eval // back to our perspective
+			_, eval = negaMax(board, depthToGo-1, depthFromRoot+1, stats, timeout)
 		}
+		eval = -eval // back to our perspective
 
 		// Take back the move
-		moveInfo.Unapply()
+		unapply()
 
 		// We try to maximise our eval.
 		// Strictly > to match alphabeta
@@ -439,7 +407,7 @@ func prioritiseKillerMove(legalMoves []dragon.Move, killer dragon.Move, useDeepK
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
 	if isTimedOut(timeout) {
@@ -478,26 +446,24 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 		
 		for _, move := range legalMoves {
 			// Make the move
-			moveInfo := board.Apply2(move)
-			
-			newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
+			unapply := board.Apply(move)
 			
 			// Get the (deep) eval
 			var eval EvalCp
 			if depthToGo <= 1 {
-				stats.Nodes ++
+				stats.Nodes++
 				if UseQSearch {
 					// Quiesce
-					childKiller, eval = qsearchAlphaBeta(board, QSearchDepth, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats)
+					childKiller, eval = qsearchAlphaBeta(board, QSearchDepth, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats)
 				} else {
-					eval = newStaticEval
+					eval = StaticEval(board)
 				}
 			} else {
-				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats, timeout)
+				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats, timeout)
 			}
 
 			// Take back the move
-			moveInfo.Unapply()
+			unapply()
 			
 			// We're white - maximise our eval.
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
@@ -534,9 +500,7 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 		
 		for _, move := range legalMoves {
 			// Make the move
-			moveInfo := board.Apply2(move)
-			
-			newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
+			unapply := board.Apply(move)
 			
 			// Get the (deep) eval
 			var eval EvalCp
@@ -544,16 +508,16 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 				stats.Nodes++
 				if UseQSearch {
 					// Quiesce
-					childKiller, eval = qsearchAlphaBeta(board, QSearchDepth, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats)
+					childKiller, eval = qsearchAlphaBeta(board, QSearchDepth, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats)
 				} else {
-					eval = newStaticEval
+					eval = StaticEval(board)
 				}
 			} else {
-				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats, timeout)
+				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats, timeout)
 			}
 			
 			// Take back the move
-			moveInfo.Unapply()
+			unapply()
 			
 			// We're black - minimise our eval.
 			// Note - this MUST be strictly < because we fail-soft AT the current best evel - beware!
@@ -590,10 +554,12 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
 // TODO - implement more efficient generation of 'noisy' moves in dragontoothmg
 // TODO - better static eval if we bottom out without quescing, e.g. static exchange evaluation (SEE)
-func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
 
 	stats.QNodes++
 	stats.QNonLeafs++
+
+	staticEval := StaticEval(board)
 
 	// Stand pat - equivalent to considering the null move as a valid move.
 	// Essentially the player to move doesn't _have_ to make a capture - (we assume that there is a non-capture move available.)
@@ -653,9 +619,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		
 		for _, move := range legalMoves {
 			// Make the move
-			moveInfo := board.Apply2(move)
-			
-			newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
+			unapply := board.Apply(move)
 			
 			// Get the (deep) eval
 			var eval EvalCp
@@ -663,13 +627,13 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 				stats.QNodes++
 				stats.QPrunes++
 				// Ignore mate check to avoid generating moves at all leaf nodes
-				eval = newStaticEval
+				eval = StaticEval(board)
 			} else {
-				childKiller, eval = qsearchAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats)
+				childKiller, eval = qsearchAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats)
 			}
 
 			// Take back the move
-			moveInfo.Unapply()
+			unapply()
 			
 			// We're white - maximise our eval.
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
@@ -707,9 +671,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		
 		for _, move := range legalMoves {
 			// Make the move
-			moveInfo := board.Apply2(move)
-			
-			newStaticEval := getStaticEval(board, staticEval, move, moveInfo)
+			unapply := board.Apply(move)
 			
 			// Get the (deep) eval
 			var eval EvalCp
@@ -717,13 +679,13 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 				stats.QNodes++
 				stats.QPrunes++
 				// Ignore mate check to avoid generating moves at all leaf nodes
-				eval = newStaticEval
+				eval = StaticEval(board)
 			} else {
-				childKiller, eval = qsearchAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, alpha, beta, newStaticEval, childKiller, deepKillers, stats)
+				childKiller, eval = qsearchAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats)
 			}
 			
 			// Take back the move
-			moveInfo.Unapply()
+			unapply()
 			
 			// We're black - minimise our eval.
 			// Note - this MUST be strictly < because we fail-soft AT the current best evel - beware!
@@ -845,7 +807,7 @@ func ResetTT() {
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
 	if isTimedOut(timeout) {
@@ -948,11 +910,9 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 
 		for i, move := range legalMoves {
 			// Make the move
-			moveInfo := board.Apply2(move)
+			unapply := board.Apply(move)
 			// Add to the move history
 			repetitions := ht.Add(board.Hash())
-			
-			newNegaStaticEval := getNegaStaticEval(board, staticNegaEval, move, moveInfo)
 			
 			// Get the (deep) eval
 			var eval EvalCp
@@ -965,20 +925,19 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 				stats.Nodes ++
 				if UseQSearch {
 					// Quiesce
-					childKiller, eval, _ = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
-					eval = -eval // back to our perspective
+					childKiller, eval, _ = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childKiller, deepKillers, stats)
 				} else {
-					eval = newNegaStaticEval
+					eval = NegaStaticEval(board)
 				}
 			} else {
-				childKiller, eval = negAlphaBeta(board, ht, depthToGo-1, depthFromRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats, timeout)
-				eval = -eval // back to our perspective
+				childKiller, eval = negAlphaBeta(board, ht, depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, deepKillers, stats, timeout)
 			}
+			eval = -eval // back to our perspective
 			
 			// Remove from the move history
 			ht.Remove(board.Hash())
 			// Take back the move
-			moveInfo.Unapply()
+			unapply()
 		
 			// Bail cleanly without polluting search results if we have timed out
 			if depthToGo > 1 && isTimedOut(timeout) {
@@ -1085,7 +1044,7 @@ func ResetQtt() {
 // Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
 // TODO - include moving away from attacks too?
-func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, staticNegaEval EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp, bool) {
+func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp, bool) {
 
 	stats.QNodes++
 	stats.QNonLeafs++
@@ -1097,6 +1056,8 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	origBeta := beta
 	origAlpha := alpha
 
+	staticNegaEval := NegaStaticEval(board)
+	
 	// Stand pat - equivalent to considering the null move as a valid move.
 	// Essentially the player to move doesn't _have_ to make a 'noisy' move - assuming that there is a quiet move available.
 	if alpha < staticNegaEval {
@@ -1220,27 +1181,27 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 
 			// Get the (deep) eval
 			var eval EvalCp
-			newNegaStaticEval := staticNegaEval + NegaFastEvalDelta(board, move)
+
+			// Make the move
+			unapply := board.Apply(move)
 
 			if qDepthToGo <= 1 {
 				stats.QNodes++
 				stats.QPrunes++
+				
 				// We hit max depth before quiescing
 				isQuiesced = false
 				// Ignore mate check to avoid generating moves at all leaf nodes
-				eval = newNegaStaticEval
+				eval = NegaStaticEval(board)
 			} else {
-				// Make the move
-				moveInfo := board.Apply2(move)
-				
 				var isChildQuiesced bool
-				childKiller, eval, isChildQuiesced = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, -newNegaStaticEval, childKiller, deepKillers, stats)
-				eval = -eval // back to our perspective
+				childKiller, eval, isChildQuiesced = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, childKiller, deepKillers, stats)
 				isQuiesced = isQuiesced && isChildQuiesced
-			
-				// Take back the move
-				moveInfo.Unapply()
 			}
+			eval = -eval // back to our perspective
+			
+			// Take back the move
+			unapply()
 			
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 			if eval > bestEval {
