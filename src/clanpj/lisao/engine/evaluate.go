@@ -232,7 +232,9 @@ func StaticEval(board *dragon.Board) EvalCp {
 	whitePiecesPosEval := piecesPosVal(&board.White, &whitePiecePosVals, &whiteKingEndgamePosVals, EndGameRatio(whitePiecesEval))
 	blackPiecesPosEval := piecesPosVal(&board.Black, &blackPiecePosVals, &blackKingEndgamePosVals, EndGameRatio(blackPiecesEval))
 
-	piecesPosEval := whitePiecesPosEval - blackPiecesPosEval
+	pawnExtrasEval := pawnExtrasVal(board)
+
+	piecesPosEval := whitePiecesPosEval - blackPiecesPosEval + pawnExtrasEval
 
 	return piecesEval + piecesPosEval
 }
@@ -306,3 +308,87 @@ func pieceTypePiecesPosVal(bitmask uint64, piecePosVals *[64]int8) EvalCp {
 	return eval
 }
 
+// Passed pawn bonuses
+// TODO rationalise these with pawn pos vals
+const pp2 int8 = 7
+const pp3 int8 = 13
+const pp4 int8 = 20
+const pp5 int8 = 28
+const pp6 int8 = 37
+
+var whitePassedPawnPosVals = [64]int8{
+	0, 0, 0, 0, 0, 0, 0, 0,
+	pp2, pp2, pp2, pp2, pp2, pp2, pp2, pp2,
+	pp3, pp3, pp3, pp3, pp3, pp3, pp3, pp3, 
+	pp4, pp4, pp4, pp4, pp4, pp4, pp4, pp4,
+	pp5, pp5, pp5, pp5, pp5, pp5, pp5, pp5,
+	pp6, pp6, pp6, pp6, pp6, pp6, pp6, pp6,
+	0, 0, 0, 0, 0, 0, 0, 0, // a 7th rank pawn is always passed, so covered by the pawn-pos-val
+	0, 0, 0, 0, 0, 0, 0, 0}
+
+var blackPassedPawnPosVals = [64]int8{
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, // a 7th rank pawn is always passed, so covered by the pawn-pos-val
+	pp6, pp6, pp6, pp6, pp6, pp6, pp6, pp6,
+	pp5, pp5, pp5, pp5, pp5, pp5, pp5, pp5,
+	pp4, pp4, pp4, pp4, pp4, pp4, pp4, pp4,
+	pp3, pp3, pp3, pp3, pp3, pp3, pp3, pp3, 
+	pp2, pp2, pp2, pp2, pp2, pp2, pp2, pp2,
+	0, 0, 0, 0, 0, 0, 0, 0}
+
+
+// Bonus for pawns protecting pawns
+const pProtPawnVal = 10
+// Bonus for pawns protecting pieces
+const pProtPieceVal = 7
+// Penalty per doubled pawn
+const doubledPawnPenalty = -15
+
+// Pawn extras
+func pawnExtrasVal(board *dragon.Board) EvalCp {
+	wPawns := board.White.Pawns
+	bPawns := board.Black.Pawns
+
+	// Passed pawns
+	wPawnScope := WPawnScope(wPawns)
+	bPawnScope := BPawnScope(wPawns)
+
+	wPassedPawns := wPawns & ^bPawnScope
+	bPassedPawns := bPawns & ^wPawnScope
+
+	wPPVal := pieceTypePiecesPosVal(wPassedPawns, &whitePassedPawnPosVals)
+	bPPVal := pieceTypePiecesPosVal(bPassedPawns, &blackPassedPawnPosVals)
+
+	// Pawns protected by pawns
+	wPawnAtt := WPawnAttacks(wPawns)
+	wPawnsProtectedByPawns := wPawnAtt & wPawns
+	wPProtPawnsVal := bits.OnesCount64(wPawnsProtectedByPawns)*pProtPawnVal
+
+	bPawnAtt := BPawnAttacks(bPawns)
+	bPawnsProtectedByPawns := bPawnAtt & bPawns
+	bPProtPawnsVal := bits.OnesCount64(bPawnsProtectedByPawns)*pProtPawnVal
+
+	// Pieces protected by pawns
+	wPieces := board.White.All & ^wPawns
+	wPiecesProtectedByPawns := wPawnAtt & wPieces 
+	wPProtPiecesVal := bits.OnesCount64(wPiecesProtectedByPawns)*pProtPieceVal
+
+	bPieces := board.Black.All & ^bPawns
+	bPiecesProtectedByPawns := bPawnAtt & bPieces 
+	bPProtPiecesVal := bits.OnesCount64(bPiecesProtectedByPawns)*pProtPieceVal
+
+	// Doubled pawns
+	wPawnTelestop := NFill(N(wPawns))
+	wDoubledPawns := wPawnTelestop & wPawns
+	wDoubledPawnVal := bits.OnesCount64(wDoubledPawns)*doubledPawnPenalty
+
+	bPawnTelestop := SFill(S(bPawns))
+	bDoubledPawns := bPawnTelestop & bPawns
+	bDoubledPawnVal := bits.OnesCount64(bDoubledPawns)*doubledPawnPenalty
+
+	
+	return (wPPVal - bPPVal) +
+		EvalCp(wPProtPawnsVal - bPProtPawnsVal) +
+		EvalCp(wPProtPiecesVal - bPProtPiecesVal) +
+		EvalCp(wDoubledPawnVal - bDoubledPawnVal)
+}
