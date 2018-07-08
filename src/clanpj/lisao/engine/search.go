@@ -69,6 +69,8 @@ var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 7                 // Ignored now that time control is implemented
 var SearchCutoffPercent = 25        // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
 var UseMoveOrdering = true
+var UseIDMoveHint = true
+var MinIDMoveHintDepth = 3
 var UseKillerMoves = true
 var UseDeepKillerMoves = true       // only valid if UseKillerMoves == true
 var UseTT = true
@@ -550,9 +552,8 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 }
 
 // Quiescence search - differs from full search as follows:
-//   - we only look at captures and promotions - we could/should also possibly look at check evasion, but check detection is currently expensive
+//   - we only look at captures, promotions and check evasion - we could/should also possibly look at checks, but check detection is currently expensive
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
-// TODO - implement more efficient generation of 'noisy' moves in dragontoothmg
 // TODO - better static eval if we bottom out without quescing, e.g. static exchange evaluation (SEE)
 func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
 
@@ -614,7 +615,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 	if board.Wtomove {
 		// White to move - maximise eval with beta cut-off
 		var bestMove = NoMove
-		var bestEval EvalCp = BlackCheckMateEval
+		var bestEval EvalCp = staticEval // stand pat value
 		childKiller := NoMove
 		
 		for _, move := range legalMoves {
@@ -666,7 +667,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 	} else {
 		// Black to move - minimise eval with alpha cut-off
 		var bestMove = NoMove
-		var bestEval EvalCp = WhiteCheckMateEval
+		var bestEval EvalCp = staticEval // stand pat value
 		childKiller := NoMove
 		
 		for _, move := range legalMoves {
@@ -897,8 +898,20 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 		}
 
 		// Sort the moves heuristically
-		if UseQSearchMoveOrdering {
+		if UseMoveOrdering {
 			if len(legalMoves) > 1 {
+				if UseIDMoveHint && depthToGo >= MinIDMoveHintDepth {
+					idKiller := killerMove
+					if idKiller == NoMove {
+						idKiller = ttMove
+					}
+					// Get the best move for a search of depth-2.
+					// We go 2 plies shallower since our eval is unstable between odd/even plies.
+					// The result is effectively the (possibly new) ttMove.
+					// TODO - weaken the beta bound (and alpha?) a bit?
+					ttMove, _ = negAlphaBeta(board, ht, depthToGo-2, depthFromRoot, alpha, beta, idKiller, deepKillers, stats, timeout)
+
+				}
 				orderMoves(board, legalMoves, ttMove, killerMove, deepKiller, &stats.Killers, &stats.DeepKillers)
 			}
 		} else if UseKillerMoves {
@@ -956,7 +969,7 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 			
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-				// beta cut-off
+       				// beta cut-off
 				if bestMove == ttMove {
 					stats.TTLateCuts++
 				} else if bestMove == killerMove {
@@ -1039,7 +1052,7 @@ func ResetQtt() {
 }
 
 // Quiescence search - differs from full search as follows:
-//   - we only look at captures and promotions - we could/should also possibly look at check evasion, but check detection is currently expensive
+//   - we only look at captures, promotions and check evasion - we could/should also possibly look at checks, but check detection is currently expensive
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
 // Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
@@ -1127,7 +1140,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 
 	// Maximise eval with beta cut-off
 	bestMove := NoMove
-	bestEval := YourCheckMateEval
+	bestEval := staticNegaEval // stand pat value
 
 	// Did we reach quiescence at all leaves?
 	isQuiesced := false

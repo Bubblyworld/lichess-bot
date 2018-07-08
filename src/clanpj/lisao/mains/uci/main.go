@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0kp Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0id Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -42,6 +42,8 @@ func uciLoop() {
 			fmt.Println("option name SearchCutoffPercent type spin default", engine.SearchCutoffPercent, "min 1 max 100")
 			fmt.Println("option name TimeLeftPerMoveDivisor type spin default", TimeLeftPerMoveDivisor, "min 2 max 200")
 			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
+			fmt.Println("option name UseIDMoveHint type check default", engine.UseIDMoveHint)
+			fmt.Println("option name MinIDMoveHintDepth type spin default", engine.MinIDMoveHintDepth, "min 2 max 1024")
 			fmt.Println("option name UseTT type check default", engine.UseTT)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UsePosRepetition type check default", engine.UsePosRepetition)
@@ -102,7 +104,6 @@ func uciLoop() {
 					continue
 				}
 				engine.SearchCutoffPercent = res
-				fmt.Println("info string Search depth changes to", res)
 			case "timeleftpermovedivisor":
 				res, err := strconv.Atoi(tokens[4])
 				if err != nil {
@@ -110,7 +111,6 @@ func uciLoop() {
 					continue
 				}
 				TimeLeftPerMoveDivisor = res
-				fmt.Println("info string Search depth changes to", res)
 			case "usemoveordering":
 				switch strings.ToLower(tokens[4]) {
 				case "true":
@@ -120,6 +120,22 @@ func uciLoop() {
 				default:
 					fmt.Println("info string Unrecognised UseMoveOrdering option:", tokens[4])
 				}
+			case "useidmovehint":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseIDMoveHint = true
+				case "false":
+					engine.UseIDMoveHint = false
+				default:
+					fmt.Println("info string Unrecognised UseIDMoveHint option:", tokens[4])
+				}
+			case "minidmovehintdepth":
+				res, err := strconv.Atoi(tokens[4])
+				if err != nil {
+					fmt.Println("info string MinIDMoveHintDepth value is not an int (", err, ")")
+					continue
+				}
+				engine.MinIDMoveHintDepth = res
 			case "usett":
 				switch strings.ToLower(tokens[4]) {
 				case "true":
