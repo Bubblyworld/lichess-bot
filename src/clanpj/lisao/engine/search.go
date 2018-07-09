@@ -26,6 +26,7 @@ type SearchStatsT struct {
 	PosRepetitions uint64    // #nodes with repeated position
 	TTHits uint64            // #nodes with successful TT probe
 	TTDepthHits uint64       // #nodes where TT hit was at the same depth
+	TTDeeperHits uint64      // #nodes where TT hit was deeper (and the same parity)
 	TTBetaCuts uint64        // #nodes with beta cutoff from TT hit
 	TTAlphaCuts uint64       // #nodes with alpha cutoff from TT hit
 	TTLateCuts uint64        // #nodes with beta cutoff from TT hit
@@ -74,6 +75,7 @@ var MinIDMoveHintDepth = 3
 var UseKillerMoves = true
 var UseDeepKillerMoves = true       // only valid if UseKillerMoves == true
 var UseTT = true
+var HeurUseTTDeeperHits = true      // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
 var UseQSearch = true
 var QSearchDepth = 12
@@ -838,22 +840,33 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 		if ttEntry != nil {
 			stats.TTHits++
 
-			ttMove = ttEntry.bestMove
+			ttpEntry := &ttEntry.parityHits[depthToGoParity(depthToGo)]
+			if(ttpEntry.bestMove == NoMove) {
+				ttpEntry = &ttEntry.parityHits[depthToGoParity(depthToGo)^1]
+			}
+			ttMove = ttpEntry.bestMove
 
 			// If the TT hit is for exactly the same depth then use the eval; otherwise we just use the bestMove as a move hint
 			// Note that most engines will use the TT eval if the TT is a deeper search; however this requires a 'stable' static eval
 			//   and changes behaviour between TT-enabled/disabled. For rigourous testing it's better to be consistent.
-			if depthToGo == int(ttEntry.depthToGo) {
+			canUseTTEval := false
+			if depthToGo == int(ttpEntry.depthToGo) {
 				stats.TTDepthHits++
-				ttEval := ttEntry.eval
+				canUseTTEval = true
+			} else if HeurUseTTDeeperHits && depthToGo < int(ttpEntry.depthToGo) && (depthToGo & 1) == (int(ttpEntry.depthToGo) & 1) {
+				stats.TTDeeperHits++
+				canUseTTEval = true
+			}
+			if canUseTTEval {
+				ttEval := ttpEntry.eval
 				// If the eval is exact then we're done
-				if ttEntry.evalType == TTEvalExact {
+				if ttpEntry.evalType == TTEvalExact {
 					stats.TTTrueEvals++
-					return ttMove, ttEntry.eval
+					return ttMove, ttpEntry.eval
 				} else {
 					var cutoffStats *uint64
 					// We can have an alpha or beta cut-off depending on the eval type
-					if ttEntry.evalType == TTEvalLowerBound {
+					if ttpEntry.evalType == TTEvalLowerBound {
 						cutoffStats = &stats.TTBetaCuts
 						if alpha < ttEval {
 							alpha = ttEval

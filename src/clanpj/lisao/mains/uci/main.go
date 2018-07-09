@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0id Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0dh Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -45,6 +45,7 @@ func uciLoop() {
 			fmt.Println("option name UseIDMoveHint type check default", engine.UseIDMoveHint)
 			fmt.Println("option name MinIDMoveHintDepth type spin default", engine.MinIDMoveHintDepth, "min 2 max 1024")
 			fmt.Println("option name UseTT type check default", engine.UseTT)
+			fmt.Println("option name HeurUseTTDeeperHits type check default", engine.HeurUseTTDeeperHits)
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UsePosRepetition type check default", engine.UsePosRepetition)
 			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
@@ -144,6 +145,15 @@ func uciLoop() {
 					engine.UseTT = false
 				default:
 					fmt.Println("info string Unrecognised UseTT option:", tokens[4])
+				}
+			case "heurusettdeeperhits":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.HeurUseTTDeeperHits = true
+				case "false":
+					engine.HeurUseTTDeeperHits = false
+				default:
+					fmt.Println("info string Unrecognised HeurUseTTDeeperHits option:", tokens[4])
 				}
 			case "usekillermoves":
 				switch strings.ToLower(tokens[4]) {
@@ -497,7 +507,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-all-nodes:", perC(stats.QAllChildrenNodes, stats.QNonLeafs), "q-1st-child-cuts:", perC(stats.QFirstChildCuts, stats.QNonLeafs), "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
 	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
 	if engine.UseTT {
-		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-beta-cuts:", perC(stats.TTBetaCuts, stats.NonLeafs), "tt-alpha-cuts:", perC(stats.TTAlphaCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
+		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-deeper-hits:", perC(stats.TTDeeperHits, stats.NonLeafs), "tt-beta-cuts:", perC(stats.TTBetaCuts, stats.NonLeafs), "tt-alpha-cuts:", perC(stats.TTAlphaCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
 	}
 	fmt.Print("info string    1st-child-cuts by depth:")
 	for i := 0; i < engine.MaxDepthStats && i < finalDepth; i++ {
