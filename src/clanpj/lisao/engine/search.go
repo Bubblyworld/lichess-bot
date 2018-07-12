@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"math/bits"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ type SearchStatsT struct {
 	NonLeafs uint64          // #non-leaf nodes
 	FirstChildCuts uint64    // #non-leaf nodes that (beta-)cut on the first child searched
 	AllChildrenNodes uint64  // #non-leaf nodes with no beta cut
+	NullMoveCuts uint64      // #nodes that cut due to null move heuristic
 	Killers uint64           // #nodes with killer move available
 	KillerCuts uint64        // #nodes with killer move cut
 	DeepKillers uint64       // #nodes with deep killer move available
@@ -69,6 +71,7 @@ const (
 var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 7                 // Ignored now that time control is implemented
 var SearchCutoffPercent = 25        // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
+var HeurUseNullMove = true
 var UseMoveOrdering = true
 var UseIDMoveHint = true
 var MinIDMoveHintDepth = 3
@@ -166,7 +169,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 		case NegAlphaBeta:
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = negAlphaBeta(board, ht, depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, fullBestMove, deepKillers[:], &stats, timeout)
+			bestMove, negaEval = negAlphaBeta(board, ht, depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, fullBestMove, deepKillers[:], false, &stats, timeout)
 			eval = negaEval
 			if !board.Wtomove {
 				eval = -negaEval
@@ -564,8 +567,7 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 
 	staticEval := StaticEval(board)
 
-	// Stand pat - equivalent to considering the null move as a valid move.
-	// Essentially the player to move doesn't _have_ to make a capture - (we assume that there is a non-capture move available.)
+	// Stand pat - the player to move doesn't _have_ to make a capture (assuming that there is a non-capture move available.)
 	if board.Wtomove {
 		if alpha < staticEval {
 			alpha = staticEval
@@ -810,7 +812,7 @@ func ResetTT() {
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, parentNullMove bool, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
 	if isTimedOut(timeout) {
@@ -824,7 +826,7 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 		stats.NonLeafsAt[depthFromRoot]++
 	}
 
-	// Remember this to check whether our final eval is a lower or upper bound
+	// Remember this to check whether our final eval is a lower or upper bound - for TT
 	origBeta := beta
 	origAlpha := alpha
 
@@ -896,17 +898,53 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 done:
 	for once := true; once; once = false {
 
-		// Generate all legal moves - thanks dragontoothmg!
-		legalMoves := board.GenerateLegalMoves()
+		// Generate all legal moves
+		legalMoves, isInCheck := board.GenerateLegalMoves2(false/*all moves*/)
 		
 		// Check for checkmate or stalemate
 		if len(legalMoves) == 0 {
 			stats.Mates++
-			bestMove, bestEval = NoMove, negaMateEval(board, depthFromRoot)
+			bestMove, bestEval = NoMove, negaMateEval(board, depthFromRoot) // TODO use isInCheck
 
 			break done
 		}
-		
+
+		// Try null-move heuristic
+		if HeurUseNullMove {
+			const nullMoveDepthSkip = 3 // must be odd to cope with our even/odd ply eval instability
+			// Try null-move - but never 2 null moves in a row, and never in check otherwise king gets captured
+			if !isInCheck && !parentNullMove && beta != MyCheckMateEval && depthToGo > nullMoveDepthSkip {
+				// Use piece count to determine end-game for zugzwang avoidance - TODO improve this
+				nNonPawns := bits.OnesCount64((board.White.All & ^board.White.Pawns) | (board.Black.All & ^board.Black.Pawns))
+				// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
+				if nNonPawns >= 6 {
+					unapply := board.ApplyNullMove()
+					_, nullMoveEval  := negAlphaBeta(board, ht, depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/, deepKillers, /*parentNullMove*/true, stats, timeout)
+					nullMoveEval = -nullMoveEval // back to our perspective
+					unapply()
+					
+					// Maximise our eval.
+					// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
+					if nullMoveEval > bestEval {
+						bestMove, bestEval = NoMove, alpha
+					}
+			
+					if alpha < bestEval {
+						alpha = bestEval
+					}
+					
+					// Did null-move heuristic already provide a cut?
+					if alpha >= beta {
+						stats.NullMoveCuts++
+
+						break done
+					}
+
+				}
+			}
+		}
+
+			
 		killerMove := NoMove
 		if UseKillerMoves {
 			killerMove = killer
@@ -928,7 +966,7 @@ done:
 					// We go 2 plies shallower since our eval is unstable between odd/even plies.
 					// The result is effectively the (possibly new) ttMove.
 					// TODO - weaken the beta bound (and alpha?) a bit?
-					ttMove, _ = negAlphaBeta(board, ht, depthToGo-2, depthFromRoot, alpha, beta, idKiller, deepKillers, stats, timeout)
+					ttMove, _ = negAlphaBeta(board, ht, depthToGo-2, depthFromRoot, alpha, beta, idKiller, deepKillers, false, stats, timeout)
 					
 				}
 				orderMoves(board, legalMoves, ttMove, killerMove, deepKiller, &stats.Killers, &stats.DeepKillers)
@@ -962,7 +1000,7 @@ done:
 					eval = NegaStaticEval(board)
 				}
 			} else {
-				childKiller, eval = negAlphaBeta(board, ht, depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, deepKillers, stats, timeout)
+				childKiller, eval = negAlphaBeta(board, ht, depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, deepKillers, false, stats, timeout)
 			}
 			eval = -eval // back to our perspective
 			

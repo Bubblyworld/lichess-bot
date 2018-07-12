@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0tt-deeper Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0null Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -41,6 +41,7 @@ func uciLoop() {
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name SearchCutoffPercent type spin default", engine.SearchCutoffPercent, "min 1 max 100")
 			fmt.Println("option name TimeLeftPerMoveDivisor type spin default", TimeLeftPerMoveDivisor, "min 2 max 200")
+			fmt.Println("option name HeurUseNullMove type check default", engine.HeurUseNullMove)
 			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
 			fmt.Println("option name UseIDMoveHint type check default", engine.UseIDMoveHint)
 			fmt.Println("option name MinIDMoveHintDepth type spin default", engine.MinIDMoveHintDepth, "min 2 max 1024")
@@ -120,6 +121,15 @@ func uciLoop() {
 					engine.UseMoveOrdering = false
 				default:
 					fmt.Println("info string Unrecognised UseMoveOrdering option:", tokens[4])
+				}
+			case "heurusenullmove":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.HeurUseNullMove = true
+				case "false":
+					engine.HeurUseNullMove = false
+				default:
+					fmt.Println("info string Unrecognised HeurUseNullMove option:", tokens[4])
 				}
 			case "useidmovehint":
 				switch strings.ToLower(tokens[4]) {
@@ -505,7 +515,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	}
 	fmt.Println()
 	fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-all-nodes:", perC(stats.QAllChildrenNodes, stats.QNonLeafs), "q-1st-child-cuts:", perC(stats.QFirstChildCuts, stats.QNonLeafs), "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
-	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	fmt.Println("info string   null-cuts:", perC(stats.NullMoveCuts, stats.NonLeafs), "mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
 	if engine.UseTT {
 		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-deeper-hits:", perC(stats.TTDeeperHits, stats.NonLeafs), "tt-beta-cuts:", perC(stats.TTBetaCuts, stats.NonLeafs), "tt-alpha-cuts:", perC(stats.TTAlphaCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
 	}
