@@ -24,7 +24,8 @@ type TTEntryT struct {
 type TTEvalT uint8
 
 const (
-	TTEvalExact TTEvalT = iota
+	TTInvalid TTEvalT = iota   // must be the 0 item
+	TTEvalExact
 	TTEvalLowerBound           // from beta cut-off
 	TTEvalUpperBound           // from alpha cut-off
 )

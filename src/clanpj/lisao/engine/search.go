@@ -840,15 +840,16 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 		if ttEntry != nil {
 			stats.TTHits++
 
+			// Pick the right parity if it's available, else anything
 			ttpEntry := &ttEntry.parityHits[depthToGoParity(depthToGo)]
-			if(ttpEntry.bestMove == NoMove) {
+			if(ttpEntry.evalType == TTInvalid) {
 				ttpEntry = &ttEntry.parityHits[depthToGoParity(depthToGo)^1]
 			}
 			ttMove = ttpEntry.bestMove
 
-			// If the TT hit is for exactly the same depth then use the eval; otherwise we just use the bestMove as a move hint
-			// Note that most engines will use the TT eval if the TT is a deeper search; however this requires a 'stable' static eval
-			//   and changes behaviour between TT-enabled/disabled. For rigourous testing it's better to be consistent.
+			// If the TT hit is for exactly the same depth then use the eval; otherwise we just use the bestMove as a move hint.
+			// We use a deeper TT hit only for the same parity since our eval in start-game is unstable between even/odd plies.
+			// N.B. using deeper TT hit (eval)s changes the search tree, so disable HeurUseTTDeeperHits for correctness testing.
 			canUseTTEval := false
 			if depthToGo == int(ttpEntry.depthToGo) {
 				stats.TTDepthHits++
