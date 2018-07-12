@@ -828,8 +828,6 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 	origBeta := beta
 	origAlpha := alpha
 
-	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
-
 	// Probe the Quiescence Transposition Table
 	var ttEntry *TTEntryT = nil
 	var ttMove = NoMove
@@ -893,15 +891,22 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 	bestMove := NoMove
 	bestEval := YourCheckMateEval
 
-	// Generate all legal moves - thanks dragontoothmg!
-	legalMoves := board.GenerateLegalMoves()
+	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
+	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
+done:
+	for once := true; once; once = false {
 
-	// Check for checkmate or stalemate
-	if len(legalMoves) == 0 {
-		stats.Mates++
-		bestMove, bestEval = NoMove, negaMateEval(board, depthFromRoot)
-	} else {
+		// Generate all legal moves - thanks dragontoothmg!
+		legalMoves := board.GenerateLegalMoves()
+		
+		// Check for checkmate or stalemate
+		if len(legalMoves) == 0 {
+			stats.Mates++
+			bestMove, bestEval = NoMove, negaMateEval(board, depthFromRoot)
 
+			break done
+		}
+		
 		killerMove := NoMove
 		if UseKillerMoves {
 			killerMove = killer
@@ -910,7 +915,7 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 		if UseDeepKillerMoves {
 			deepKiller = deepKillers[depthFromRoot]
 		}
-
+		
 		// Sort the moves heuristically
 		if UseMoveOrdering {
 			if len(legalMoves) > 1 {
@@ -924,7 +929,7 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 					// The result is effectively the (possibly new) ttMove.
 					// TODO - weaken the beta bound (and alpha?) a bit?
 					ttMove, _ = negAlphaBeta(board, ht, depthToGo-2, depthFromRoot, alpha, beta, idKiller, deepKillers, stats, timeout)
-
+					
 				}
 				orderMoves(board, legalMoves, ttMove, killerMove, deepKiller, &stats.Killers, &stats.DeepKillers)
 			}
@@ -932,9 +937,9 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 			// Place killer-move (or deep killer move) first if it's there
 			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
 		}
-
+		
 		childKiller := NoMove
-
+		
 		for i, move := range legalMoves {
 			// Make the move
 			unapply := board.Apply(move)
@@ -965,12 +970,12 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 			ht.Remove(board.Hash())
 			// Take back the move
 			unapply()
-		
+			
 			// Bail cleanly without polluting search results if we have timed out
 			if depthToGo > 1 && isTimedOut(timeout) {
 				break
 			}
-
+			
 			// Maximise our eval.
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 			if eval > bestEval {
@@ -983,7 +988,7 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 			
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-       				// beta cut-off
+				// beta cut-off
 				if bestMove == ttMove {
 					stats.TTLateCuts++
 				} else if bestMove == killerMove {
@@ -1000,13 +1005,13 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 				break
 			}
 		}
-
+		
 		// If we didn't get a beta cut-off then we visited all children.
 		if bestEval <= origBeta {
 			stats.AllChildrenNodes++
 		}
 		deepKillers[depthFromRoot] = bestMove
-	}
+	} // end of fake run-once loop
 	
 	if UseTT {
 		// Update the TT - but only if the search was not truncated due to a time-out
