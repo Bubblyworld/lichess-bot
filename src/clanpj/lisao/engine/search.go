@@ -926,7 +926,7 @@ done:
 					// Maximise our eval.
 					// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 					if nullMoveEval > bestEval {
-						bestMove, bestEval = NoMove, alpha
+						bestMove, bestEval = NoMove, nullMoveEval
 					}
 			
 					if alpha < bestEval {
