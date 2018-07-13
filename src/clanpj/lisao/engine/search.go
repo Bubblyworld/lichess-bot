@@ -147,6 +147,8 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 	fmt.Println("info string using", SearchAlgorithmString(), "max depth", maxDepthToGo)
 
+	s := NewSearchT(board, ht, deepKillers[:], &stats, timeout)
+	
 	var depthToGo int
 	// Iterative deepening
 	for depthToGo = MinDepth; depthToGo <= maxDepthToGo; depthToGo++ {
@@ -155,11 +157,11 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 		switch SearchAlgorithm {
 		case MiniMax:
-			bestMove, eval = miniMax(board, depthToGo, /*depthFromRoot*/0, &stats, timeout)
+			bestMove, eval = s.MiniMax(depthToGo, /*depthFromRoot*/0)
 			
 		case NegaMax:
 			var negaEval EvalCp
-			bestMove, negaEval = negaMax(board, depthToGo, /*depthFromRoot*/0, &stats, timeout)
+			bestMove, negaEval = s.NegaMax(depthToGo, /*depthFromRoot*/0)
 			eval = negaEval
 			if !board.Wtomove {
 				eval = -negaEval
@@ -167,19 +169,19 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 			
 		case AlphaBeta:
 			// Use the best move from the previous depth as the killer move for this depth
-			bestMove, eval = alphaBeta(board, depthToGo, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, fullBestMove, deepKillers[:], &stats, timeout)
+			bestMove, eval = s.AlphaBeta(depthToGo, /*depthFromRoot*/0, BlackCheckMateEval, WhiteCheckMateEval, fullBestMove)
 			
 		case NegAlphaBeta:
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = negAlphaBeta(board, ht, depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, fullBestMove, deepKillers[:], false, &stats, timeout)
+			bestMove, negaEval = s.NegAlphaBeta(depthToGo, /*depthFromRoot*/0, YourCheckMateEval, MyCheckMateEval, fullBestMove, false)
 			eval = negaEval
 			if !board.Wtomove {
 				eval = -negaEval
 			}
 			
 		default:
-		return NoMove, 0, stats, 0, errors.New("bot: unrecognised search algorithm")
+			return NoMove, 0, stats, 0, errors.New("bot: unrecognised search algorithm")
 		}
 
 		elapsedSecs := time.Since(start).Seconds()
@@ -264,34 +266,56 @@ func negaMateEval(board *dragon.Board, depthFromRoot int) EvalCp {
 	return DrawEval
 }
 
+// Search tree encapsulation
+type SearchT struct {
+	board *dragon.Board
+	ht HistoryTableT
+	deepKillers []dragon.Move
+	stats *SearchStatsT
+	timeout *uint32
+}
+
+// What is the correct way to do this in Go?
+func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) *SearchT {
+	var s SearchT
+	s.board = board
+	s.ht = ht
+	s.deepKillers = deepKillers
+	s.stats = stats
+	s.timeout = timeout
+
+	return &s
+}
+
 // Return the best eval attainable through minmax from the given
 //   position, along with the move leading to the principal variation.
 // Eval is given from white's perspective.
-func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func (s *SearchT) MiniMax(depthToGo int, depthFromRoot int) (dragon.Move, EvalCp) {
 
+	isWhiteMove := s.board.Wtomove
+	
 	// Bail if we've timed out
-	if isTimedOut(timeout) {
+	if isTimedOut(s.timeout) {
 		worstEval := WhiteCheckMateEval
-		if board.Wtomove {
+		if isWhiteMove {
 			worstEval = BlackCheckMateEval
 		}
 		// Return the worst possible eval (opponent checkmate) to invalidate this incomplete search branch
 		return NoMove, worstEval
 	}
 
-	stats.Nodes++
-	stats.NonLeafs++
+	s.stats.Nodes++
+	s.stats.NonLeafs++
 
 	// Generate all legal moves - thanks dragontoothmg!
-	legalMoves := board.GenerateLegalMoves()
+	legalMoves := s.board.GenerateLegalMoves()
 
 	// Check for checkmate or stalemate
 	if len(legalMoves) == 0 {
-		stats.Mates++
-		return NoMove, mateEval(board, depthFromRoot)
+		s.stats.Mates++
+		return NoMove, mateEval(s.board, depthFromRoot)
 	}
 	
-	isWhiteMove := board.Wtomove
 	var bestMove = NoMove
 	var bestEval EvalCp = WhiteCheckMateEval
 	if isWhiteMove {
@@ -300,16 +324,16 @@ func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, stats *Searc
 
 	for _, move := range legalMoves {
 		// Make the move
-		unapply := board.Apply(move)
+		unapply := s.board.Apply(move)
 
 		// Get the (deep) eval
 		var eval EvalCp
 		if depthToGo <= 1 {
-			stats.Nodes++
+			s.stats.Nodes++
 			// Ignore mate check to avoid generating moves at all leaf nodes
-			eval = StaticEval(board)
+			eval = StaticEval(s.board)
 		} else {
-			_, eval = miniMax(board, depthToGo-1, depthFromRoot+1, stats, timeout)
+			_, eval = s.MiniMax(/*board,*/ depthToGo-1, depthFromRoot+1/*, stats, timeout*/)
 		}
 
 		// Take back the move
@@ -336,24 +360,24 @@ func miniMax(board *dragon.Board, depthToGo int, depthFromRoot int, stats *Searc
 // Return the best eval attainable through negamax from the given
 //   position, along with the move leading to the principal variation.
 // Eval is given from current mover's perspective.
-func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func (s *SearchT) NegaMax(depthToGo int, depthFromRoot int) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
-	if isTimedOut(timeout) {
+	if isTimedOut(s.timeout) {
 		// Return the worst possible eval (opponent checkmate) to invalidate this incomplete search branch
 		return NoMove, YourCheckMateEval
 	}
 
-	stats.Nodes++
-	stats.NonLeafs++
+	s.stats.Nodes++
+	s.stats.NonLeafs++
 
 	// Generate all legal moves - thanks dragontoothmg!
-	legalMoves := board.GenerateLegalMoves()
+	legalMoves := s.board.GenerateLegalMoves()
 
 	// Check for checkmate or stalemate
 	if len(legalMoves) == 0 {
-		stats.Mates++
-		return NoMove, negaMateEval(board, depthFromRoot)
+		s.stats.Mates++
+		return NoMove, negaMateEval(s.board, depthFromRoot)
 	}
 	
 	bestMove := NoMove
@@ -361,16 +385,16 @@ func negaMax(board *dragon.Board, depthToGo int, depthFromRoot int, stats *Searc
 
 	for _, move := range legalMoves {
 		// Make the move
-		unapply := board.Apply(move)
+		unapply := s.board.Apply(move)
 
 		// Get the (deep) eval
 		var eval EvalCp
 		if depthToGo <= 1 {
-			stats.Nodes++
+			s.stats.Nodes++
 			// Ignore mate check to avoid generating moves at all leaf nodes
-			eval = NegaStaticEval(board)
+			eval = NegaStaticEval(s.board)
 		} else {
-			_, eval = negaMax(board, depthToGo-1, depthFromRoot+1, stats, timeout)
+			_, eval = s.NegaMax(depthToGo-1, depthFromRoot+1)
 		}
 		eval = -eval // back to our perspective
 
@@ -417,38 +441,38 @@ func prioritiseKillerMove(legalMoves []dragon.Move, killer dragon.Move, useDeepK
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func (s *SearchT) AlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
-	if isTimedOut(timeout) {
+	if isTimedOut(s.timeout) {
 		worstEval := WhiteCheckMateEval
-		if board.Wtomove {
+		if s.board.Wtomove {
 			worstEval = BlackCheckMateEval
 		}
 		// Return the worst possible eval (opponent checkmate) to invalidate this incomplete search branch
 		return NoMove, worstEval
 	}
 
-	stats.Nodes++
-	stats.NonLeafs++
+	s.stats.Nodes++
+	s.stats.NonLeafs++
 
 	// Generate all legal moves - thanks dragontoothmg!
-	legalMoves := board.GenerateLegalMoves()
+	legalMoves := s.board.GenerateLegalMoves()
 
 	// Check for checkmate or stalemate
 	if len(legalMoves) == 0 {
-		stats.Mates++
-		return NoMove, mateEval(board, depthFromRoot)
+		s.stats.Mates++
+		return NoMove, mateEval(s.board, depthFromRoot)
 	}
 
 	usingDeepKiller := false
 	if(UseKillerMoves) {
 		// Place killer-move (or deep killer move) first if it's there
-		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
+		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.Killers, &s.stats.DeepKillers)
 	}
 		
 	// Would be smaller with negalpha-beta but this is simple
-	if board.Wtomove {
+	if s.board.Wtomove {
 		// White to move - maximise eval with beta cut-off
 		var bestMove = NoMove
 		var bestEval EvalCp = BlackCheckMateEval
@@ -456,20 +480,20 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 		
 		for _, move := range legalMoves {
 			// Make the move
-			unapply := board.Apply(move)
+			unapply := s.board.Apply(move)
 			
 			// Get the (deep) eval
 			var eval EvalCp
 			if depthToGo <= 1 {
-				stats.Nodes++
+				s.stats.Nodes++
 				if UseQSearch {
 					// Quiesce
-					childKiller, eval = qsearchAlphaBeta(board, QSearchDepth, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats)
+					childKiller, eval = s.QSearchAlphaBeta(QSearchDepth, depthFromRoot+1, alpha, beta, childKiller)
 				} else {
-					eval = StaticEval(board)
+					eval = StaticEval(s.board)
 				}
 			} else {
-				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats, timeout)
+				childKiller, eval = s.AlphaBeta(depthToGo-1, depthFromRoot+1, alpha, beta, childKiller)
 			}
 
 			// Take back the move
@@ -489,18 +513,18 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 			if alpha >= beta {
 				if UseKillerMoves && bestMove == killer {
 					if usingDeepKiller {
-						stats.DeepKillerCuts++
+						s.stats.DeepKillerCuts++
 					} else {
-						stats.KillerCuts++
+						s.stats.KillerCuts++
 					}
 				}
 				// beta cut-off
- 				deepKillers[depthFromRoot] = bestMove
+ 				s.deepKillers[depthFromRoot] = bestMove
 				return bestMove, bestEval
 			}
 		}
 		
-		deepKillers[depthFromRoot] = bestMove
+		s.deepKillers[depthFromRoot] = bestMove
 		return bestMove, bestEval
 	} else {
 		// Black to move - minimise eval with alpha cut-off
@@ -510,20 +534,20 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 		
 		for _, move := range legalMoves {
 			// Make the move
-			unapply := board.Apply(move)
+			unapply := s.board.Apply(move)
 			
 			// Get the (deep) eval
 			var eval EvalCp
 			if depthToGo <= 1 {
-				stats.Nodes++
+				s.stats.Nodes++
 				if UseQSearch {
 					// Quiesce
-					childKiller, eval = qsearchAlphaBeta(board, QSearchDepth, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats)
+					childKiller, eval = s.QSearchAlphaBeta(QSearchDepth, depthFromRoot+1, alpha, beta, childKiller)
 				} else {
-					eval = StaticEval(board)
+					eval = StaticEval(s.board)
 				}
 			} else {
-				childKiller, eval = alphaBeta(board, depthToGo-1, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats, timeout)
+				childKiller, eval = s.AlphaBeta(depthToGo-1, depthFromRoot+1, alpha, beta, childKiller)
 			}
 			
 			// Take back the move
@@ -543,18 +567,18 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 			if alpha >= beta {
 				if UseKillerMoves && bestMove == killer {
 					if usingDeepKiller {
-						stats.DeepKillerCuts++
+						s.stats.DeepKillerCuts++
 					} else {
-						stats.KillerCuts++
+						s.stats.KillerCuts++
 					}
 				}
 				// alpha cut-off
-				deepKillers[depthFromRoot] = bestMove
+				s.deepKillers[depthFromRoot] = bestMove
 				return bestMove, bestEval
 			}
 		}
 
-		deepKillers[depthFromRoot] = bestMove
+		s.deepKillers[depthFromRoot] = bestMove
 		return bestMove, bestEval
 	}
 }
@@ -563,23 +587,23 @@ func alphaBeta(board *dragon.Board, depthToGo int, depthFromRoot int, alpha Eval
 //   - we only look at captures, promotions and check evasion - we could/should also possibly look at checks, but check detection is currently expensive
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
 // TODO - better static eval if we bottom out without quescing, e.g. static exchange evaluation (SEE)
-func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp) {
+func (s *SearchT) QSearchAlphaBeta(qDepthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move) (dragon.Move, EvalCp) {
 
-	stats.QNodes++
-	stats.QNonLeafs++
+	s.stats.QNodes++
+	s.stats.QNonLeafs++
 
-	staticEval := StaticEval(board)
+	staticEval := StaticEval(s.board)
 
 	// Stand pat - the player to move doesn't _have_ to make a capture (assuming that there is a non-capture move available.)
-	if board.Wtomove {
+	if s.board.Wtomove {
 		if alpha < staticEval {
 			alpha = staticEval
 		}
 
 		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 		if alpha >= beta {
-			stats.QPats++
-			stats.QPatCuts++
+			s.stats.QPats++
+			s.stats.QPatCuts++
 			return NoMove, staticEval
 		}
 
@@ -590,24 +614,24 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		
 		// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 		if alpha >= beta {
-			stats.QPats++
-			stats.QPatCuts++
+			s.stats.QPats++
+			s.stats.QPatCuts++
 			return NoMove, staticEval
 		}
 	}
 
-	// Generate all noisy legal moves - thanks dragontoothmg!
-	legalMoves, isInCheck := board.GenerateLegalMoves2(/*onlyCapturesPromosCheckEvasion*/true)
+	// Generate all noisy legal moves
+	legalMoves, isInCheck := s.board.GenerateLegalMoves2(/*onlyCapturesPromosCheckEvasion*/true)
 
 	// No noisy mvoes
 	if len(legalMoves) == 0 {
 		// Check for checkmate or stalemate
 		if isInCheck {
-			stats.QMates++
-			return NoMove, mateEval(board, depthFromRoot) // TODO checks for mate again expensively
+			s.stats.QMates++
+			return NoMove, mateEval(s.board, depthFromRoot) // TODO checks for mate again expensively
 		} else {
 			// Already quiesced - just return static eval
-			stats.QQuiesced++
+			s.stats.QQuiesced++
 			return NoMove, staticEval
 		}
 	}
@@ -615,11 +639,11 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 	usingDeepKiller := false
 	if(UseQKillerMoves) {
 		// Place killer-move (or deep killer move) first if it's there
-		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+		killer, usingDeepKiller = prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.QKillers, &s.stats.QDeepKillers)
 	}
 
 	// Would be smaller with negalpha-beta but this is simple
-	if board.Wtomove {
+	if s.board.Wtomove {
 		// White to move - maximise eval with beta cut-off
 		var bestMove = NoMove
 		var bestEval EvalCp = staticEval // stand pat value
@@ -627,17 +651,17 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		
 		for _, move := range legalMoves {
 			// Make the move
-			unapply := board.Apply(move)
+			unapply := s.board.Apply(move)
 			
 			// Get the (deep) eval
 			var eval EvalCp
 			if qDepthToGo <= 1 {
-				stats.QNodes++
-				stats.QPrunes++
+				s.stats.QNodes++
+				s.stats.QPrunes++
 				// Ignore mate check to avoid generating moves at all leaf nodes
-				eval = StaticEval(board)
+				eval = StaticEval(s.board)
 			} else {
-				childKiller, eval = qsearchAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats)
+				childKiller, eval = s.QSearchAlphaBeta(qDepthToGo-1, depthFromRoot+1, alpha, beta, childKiller)
 			}
 
 			// Take back the move
@@ -657,19 +681,19 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 			if alpha >= beta {
 				if UseQKillerMoves && bestMove == killer {
 					if usingDeepKiller {
-						stats.QDeepKillerCuts++
+						s.stats.QDeepKillerCuts++
 					} else {
-						stats.QKillerCuts++
+						s.stats.QKillerCuts++
 					}
 				}
 				// beta cut-off
- 				deepKillers[depthFromRoot] = bestMove
+ 				s.deepKillers[depthFromRoot] = bestMove
 				return bestMove, bestEval
 			}
 		}
 
-		stats.QPats++
-		deepKillers[depthFromRoot] = bestMove
+		s.stats.QPats++
+		s.deepKillers[depthFromRoot] = bestMove
 		return bestMove, bestEval
 	} else {
 		// Black to move - minimise eval with alpha cut-off
@@ -679,17 +703,17 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 		
 		for _, move := range legalMoves {
 			// Make the move
-			unapply := board.Apply(move)
+			unapply := s.board.Apply(move)
 			
 			// Get the (deep) eval
 			var eval EvalCp
 			if qDepthToGo <= 1 {
-				stats.QNodes++
-				stats.QPrunes++
+				s.stats.QNodes++
+				s.stats.QPrunes++
 				// Ignore mate check to avoid generating moves at all leaf nodes
-				eval = StaticEval(board)
+				eval = StaticEval(s.board)
 			} else {
-				childKiller, eval = qsearchAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, alpha, beta, childKiller, deepKillers, stats)
+				childKiller, eval = s.QSearchAlphaBeta(qDepthToGo-1, depthFromRoot+1, alpha, beta, childKiller)
 			}
 			
 			// Take back the move
@@ -709,19 +733,19 @@ func qsearchAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, al
 			if alpha >= beta {
 				if UseQKillerMoves && bestMove == killer {
 					if usingDeepKiller {
-						stats.QDeepKillerCuts++
+						s.stats.QDeepKillerCuts++
 					} else {
-						stats.QKillerCuts++
+						s.stats.QKillerCuts++
 					}
 				}
 				// alpha cut-off
- 				deepKillers[depthFromRoot] = bestMove
+ 				s.deepKillers[depthFromRoot] = bestMove
 				return bestMove, bestEval
 			}
 		}
 
-		stats.QPats++
-		deepKillers[depthFromRoot] = bestMove
+		s.stats.QPats++
+		s.deepKillers[depthFromRoot] = bestMove
 		return bestMove, bestEval
 	}
 }
@@ -814,22 +838,19 @@ func ResetTT() {
 	tt = make([]TTEntryT, TTSize)
 }
 
-var hashclash = make(map[string]uint64)
-var clashdumped = false
-
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, parentNullMove bool, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
+func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, parentNullMove bool) (dragon.Move, EvalCp) {
 
 	// Bail if we've timed out
-	if isTimedOut(timeout) {
+	if isTimedOut(s.timeout) {
 		// Return the worst possible eval (opponent checkmate) to invalidate this incomplete search branch
 		return NoMove, YourCheckMateEval
 	}
 
-	stats.Nodes++
-	stats.NonLeafs++
+	s.stats.Nodes++
+	s.stats.NonLeafs++
 	if depthFromRoot < MaxDepthStats {
-		stats.NonLeafsAt[depthFromRoot]++
+		s.stats.NonLeafsAt[depthFromRoot]++
 	}
 
 	// Remember this to check whether our final eval is a lower or upper bound - for TT
@@ -839,10 +860,10 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 	// Probe the Transposition Table
 	var ttMove = NoMove
 	if UseTT {
-		ttEntry, isTTHit := probeTT(tt, board.Hash())
+		ttEntry, isTTHit := probeTT(tt, s.board.Hash())
 
 		if isTTHit {
-			stats.TTHits++
+			s.stats.TTHits++
 			
 			// Pick the right parity if it's available, else anything
 			ttpEntry := &ttEntry.parityHits[depthToGoParity(depthToGo)]
@@ -856,29 +877,29 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 			// N.B. using deeper TT hit (eval)s changes the search tree, so disable HeurUseTTDeeperHits for correctness testing.
 			canUseTTEval := false
 			if depthToGo == int(ttpEntry.depthToGo) {
-				stats.TTDepthHits++
+				s.stats.TTDepthHits++
 				canUseTTEval = true
 			} else if HeurUseTTDeeperHits && depthToGo < int(ttpEntry.depthToGo) && (depthToGo & 1) == (int(ttpEntry.depthToGo) & 1) {
-				stats.TTDeeperHits++
+				s.stats.TTDeeperHits++
 				canUseTTEval = true
 			}
 			if canUseTTEval {
 				ttEval := ttpEntry.eval
 				// If the eval is exact then we're done
 				if ttpEntry.evalType == TTEvalExact {
-					stats.TTTrueEvals++
+					s.stats.TTTrueEvals++
 					return ttMove, ttpEntry.eval
 				} else {
 					var cutoffStats *uint64
 					// We can have an alpha or beta cut-off depending on the eval type
 					if ttpEntry.evalType == TTEvalLowerBound {
-						cutoffStats = &stats.TTBetaCuts
+						cutoffStats = &s.stats.TTBetaCuts
 						if alpha < ttEval {
 							alpha = ttEval
 						}
 					} else {
 						// TTEvalUpperBound
-						cutoffStats = &stats.TTAlphaCuts
+						cutoffStats = &s.stats.TTAlphaCuts
 						if ttEval < beta {
 							beta = ttEval
 						}
@@ -909,39 +930,39 @@ done:
 		// Try hint move before doing move-gen if we have a known valid move hint
 		if UseEarlyMoveHint {
 			if hintMove != NoMove {
-				stats.ValidHintMoves++
+				s.stats.ValidHintMoves++
 				// Make the move
-				unapply := board.Apply(hintMove)
+				unapply := s.board.Apply(hintMove)
 				// Add to the move history
-				repetitions := ht.Add(board.Hash())
+				repetitions := s.ht.Add(s.board.Hash())
 				
 				// Get the (deep) eval
 				var eval EvalCp
 				// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
 				// This reduces the search tree a bit and is common practice in chess engines.
 				if UsePosRepetition && repetitions > 1 {
-					stats.PosRepetitions++
+					s.stats.PosRepetitions++
 					eval = DrawEval
 				} else if depthToGo <= 1 {
-					stats.Nodes ++
+					s.stats.Nodes ++
 					if UseQSearch {
 						// Quiesce
-						childKiller, eval, _ = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childKiller, deepKillers, stats)
+						childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childKiller)
 					} else {
-						eval = NegaStaticEval(board)
+						eval = NegaStaticEval(s.board)
 					}
 				} else {
-					childKiller, eval = negAlphaBeta(board, ht, depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, deepKillers, false, stats, timeout)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false)
 				}
 				eval = -eval // back to our perspective
 				
 				// Remove from the move history
-				ht.Remove(board.Hash())
+				s.ht.Remove(s.board.Hash())
 				// Take back the move
 				unapply()
 				
 				// Bail cleanly without polluting search results if we have timed out
-				if depthToGo > 1 && isTimedOut(timeout) {
+				if depthToGo > 1 && isTimedOut(s.timeout) {
 					break done
 				}
 				
@@ -958,10 +979,10 @@ done:
 				// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 				if alpha >= beta {
 					// beta cut-off
-					stats.HintMoveCuts++
-					stats.FirstChildCuts++
+					s.stats.HintMoveCuts++
+					s.stats.FirstChildCuts++
 					if depthFromRoot < MaxDepthStats {
-						stats.FirstChildCutsAt[depthFromRoot]++
+						s.stats.FirstChildCutsAt[depthFromRoot]++
 					}
 					
 					break done
@@ -971,12 +992,12 @@ done:
 
 			
 		// Generate all legal moves
-		legalMoves, isInCheck := board.GenerateLegalMoves2(false/*all moves*/)
+		legalMoves, isInCheck := s.board.GenerateLegalMoves2(false/*all moves*/)
 		
 		// Check for checkmate or stalemate
 		if len(legalMoves) == 0 {
-			stats.Mates++
-			bestMove, bestEval = NoMove, negaMateEval(board, depthFromRoot) // TODO use isInCheck
+			s.stats.Mates++
+			bestMove, bestEval = NoMove, negaMateEval(s.board, depthFromRoot) // TODO use isInCheck
 
 			break done
 		}
@@ -987,16 +1008,16 @@ done:
 			// Try null-move - but never 2 null moves in a row, and never in check otherwise king gets captured
 			if !isInCheck && !parentNullMove && beta != MyCheckMateEval && depthToGo > nullMoveDepthSkip {
 				// Use piece count to determine end-game for zugzwang avoidance - TODO improve this
-				nNonPawns := bits.OnesCount64((board.White.All & ^board.White.Pawns) | (board.Black.All & ^board.Black.Pawns))
+				nNonPawns := bits.OnesCount64((s.board.White.All & ^s.board.White.Pawns) | (s.board.Black.All & ^s.board.Black.Pawns))
 				// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
 				if nNonPawns >= 6 {
-					unapply := board.ApplyNullMove()
-					_, nullMoveEval  := negAlphaBeta(board, ht, depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/, deepKillers, /*parentNullMove*/true, stats, timeout)
+					unapply := s.board.ApplyNullMove()
+					_, nullMoveEval  := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/, /*parentNullMove*/true)
 					nullMoveEval = -nullMoveEval // back to our perspective
 					unapply()
 					
 					// Bail cleanly without polluting search results if we have timed out
-					if depthToGo > 1 && isTimedOut(timeout) {
+					if depthToGo > 1 && isTimedOut(s.timeout) {
 						break done
 					}
 			
@@ -1012,7 +1033,7 @@ done:
 					
 					// Did null-move heuristic already provide a cut?
 					if alpha >= beta {
-						stats.NullMoveCuts++
+						s.stats.NullMoveCuts++
 
 						break done
 					}
@@ -1028,7 +1049,7 @@ done:
 		}
 		deepKiller := NoMove
 		if UseDeepKillerMoves {
-			deepKiller = deepKillers[depthFromRoot]
+			deepKiller = s.deepKillers[depthFromRoot]
 		}
 		
 		// Sort the moves heuristically
@@ -1043,14 +1064,14 @@ done:
 					// We go 2 plies shallower since our eval is unstable between odd/even plies.
 					// The result is effectively the (possibly new) ttMove.
 					// TODO - weaken the beta bound (and alpha?) a bit?
-					ttMove, _ = negAlphaBeta(board, ht, depthToGo-2, depthFromRoot, alpha, beta, idKiller, deepKillers, false, stats, timeout)
+					ttMove, _ = s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, idKiller, false)
 					
 				}
-				orderMoves(board, legalMoves, ttMove, killerMove, deepKiller, &stats.Killers, &stats.DeepKillers)
+				orderMoves(s.board, legalMoves, ttMove, killerMove, deepKiller, &s.stats.Killers, &s.stats.DeepKillers)
 			}
 		} else if UseKillerMoves {
 			// Place killer-move (or deep killer move) first if it's there
-			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
+			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.Killers, &s.stats.DeepKillers)
 		}
 		
 		for i, move := range legalMoves {
@@ -1060,37 +1081,37 @@ done:
 			}
 				
 			// Make the move
-			unapply := board.Apply(move)
+			unapply := s.board.Apply(move)
 			// Add to the move history
-			repetitions := ht.Add(board.Hash())
+			repetitions := s.ht.Add(s.board.Hash())
 			
 			// Get the (deep) eval
 			var eval EvalCp
 			// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
 			// This reduces the search tree a bit and is common practice in chess engines.
 			if UsePosRepetition && repetitions > 1 {
-				stats.PosRepetitions++
+				s.stats.PosRepetitions++
 				eval = DrawEval
 			} else if depthToGo <= 1 {
-				stats.Nodes ++
+				s.stats.Nodes ++
 				if UseQSearch {
 					// Quiesce
-					childKiller, eval, _ = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childKiller, deepKillers, stats)
+					childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childKiller)
 				} else {
-					eval = NegaStaticEval(board)
+					eval = NegaStaticEval(s.board)
 				}
 			} else {
-				childKiller, eval = negAlphaBeta(board, ht, depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, deepKillers, false, stats, timeout)
+				childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false)
 			}
 			eval = -eval // back to our perspective
 			
 			// Remove from the move history
-			ht.Remove(board.Hash())
+			s.ht.Remove(s.board.Hash())
 			// Take back the move
 			unapply()
 			
 			// Bail cleanly without polluting search results if we have timed out
-			if depthToGo > 1 && isTimedOut(timeout) {
+			if depthToGo > 1 && isTimedOut(s.timeout) {
 				break
 			}
 			
@@ -1108,16 +1129,16 @@ done:
 			if alpha >= beta {
 				// beta cut-off
 				if bestMove == ttMove {
-					stats.TTLateCuts++
+					s.stats.TTLateCuts++
 				} else if bestMove == killerMove {
-					stats.KillerCuts++
+					s.stats.KillerCuts++
 				} else if bestMove == deepKiller {
-					stats.DeepKillerCuts++
+					s.stats.DeepKillerCuts++
 				}
 				if i == 0 {
-					stats.FirstChildCuts++
+					s.stats.FirstChildCuts++
 					if depthFromRoot < MaxDepthStats {
-						stats.FirstChildCutsAt[depthFromRoot]++
+						s.stats.FirstChildCutsAt[depthFromRoot]++
 					}
 				}
 				break
@@ -1126,14 +1147,14 @@ done:
 	
 		// If we didn't get a beta cut-off then we visited all children.
 		if bestEval <= origBeta {
-			stats.AllChildrenNodes++
+			s.stats.AllChildrenNodes++
 		}
-		deepKillers[depthFromRoot] = bestMove
+		s.deepKillers[depthFromRoot] = bestMove
 	} // end of fake run-once loop
 
 	if UseTT {
 		// Update the TT - but only if the search was not truncated due to a time-out
-		if !isTimedOut(timeout) {
+		if !isTimedOut(s.timeout) {
 			evalType := TTEvalExact
 			if origBeta <= bestEval {
 				evalType = TTEvalLowerBound
@@ -1141,7 +1162,7 @@ done:
 				evalType = TTEvalUpperBound
 			}
 			// Write back the TT entry - this is an update if the TT already contains an entry for this hash
-			writeTTEntry(tt, board.Hash(), bestEval, bestMove, depthToGo, evalType)
+			writeTTEntry(tt, s.board.Hash(), bestEval, bestMove, depthToGo, evalType)
 		}
 	}
 
@@ -1189,19 +1210,19 @@ func ResetQtt() {
 // Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
 // TODO - include moving away from attacks too?
-func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, stats *SearchStatsT) (dragon.Move, EvalCp, bool) {
+func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move) (dragon.Move, EvalCp, bool) {
 
-	stats.QNodes++
-	stats.QNonLeafs++
+	s.stats.QNodes++
+	s.stats.QNonLeafs++
 	if depthFromQRoot < MaxQDepthStats {
-		stats.QNonLeafsAt[depthFromQRoot]++
+		s.stats.QNonLeafsAt[depthFromQRoot]++
 	}
 
 	// Remember this to check whether our final eval is a lower or upper bound
 	origBeta := beta
 	origAlpha := alpha
 
-	staticNegaEval := NegaStaticEval(board)
+	staticNegaEval := NegaStaticEval(s.board)
 	
 	// Stand pat - equivalent to considering the null move as a valid move.
 	// Essentially the player to move doesn't _have_ to make a 'noisy' move - assuming that there is a quiet move available.
@@ -1211,8 +1232,8 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 
 	// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 	if alpha >= beta {
-		stats.QPats++
-		stats.QPatCuts++
+		s.stats.QPats++
+		s.stats.QPatCuts++
 
 		return NoMove, staticNegaEval, false // TODO - not sure what to return here for isQuiesced - this is playing safe
 	}
@@ -1222,10 +1243,10 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	// Probe the Quiescence Transposition Table
 	var qttMove = NoMove
 	if UseQSearchTT {
-		qttEntry, isQttHit := probeQtt(qtt, board.Hash())
+		qttEntry, isQttHit := probeQtt(qtt, s.board.Hash())
 
 		if isQttHit {
-			stats.QttHits++
+			s.stats.QttHits++
 
 			qttMove = qttEntry.bestMove
 
@@ -1237,23 +1258,23 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 				qDepthToGo > int(qttEntry.qDepthToGo) && qttEntry.isQuiesced
 			
 			if isExactHit {
-				stats.QttDepthHits++
+				s.stats.QttDepthHits++
 				qttEval := qttEntry.eval
 				// If the eval is exact then we're done
 				if qttEntry.evalType == TTEvalExact {
-					stats.QttTrueEvals++
+					s.stats.QttTrueEvals++
 					return qttMove, qttEntry.eval, qttEntry.isQuiesced
 				} else  {
 					var cutoffStats *uint64
 					// We can have an alpha or beta cut-off depending on the eval type
 					if qttEntry.evalType == TTEvalLowerBound {
-						cutoffStats = &stats.QttBetaCuts
+						cutoffStats = &s.stats.QttBetaCuts
 						if alpha < qttEval {
 							alpha = qttEval
 						}
 					} else {
 						// TTEvalUpperBound
-						cutoffStats = &stats.QttAlphaCuts
+						cutoffStats = &s.stats.QttAlphaCuts
 						if qttEval < beta {
 							beta = qttEval
 						}
@@ -1276,14 +1297,14 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	isQuiesced := false
 	
 	// Generate all noisy legal moves
-	legalMoves, isInCheck := board.GenerateLegalMoves2(/*onlyCapturesPromosCheckEvasion*/true)
+	legalMoves, isInCheck := s.board.GenerateLegalMoves2(/*onlyCapturesPromosCheckEvasion*/true)
 	
 	if len(legalMoves) == 0 {
 		// No noisy moves - checkmate or stalemate or just quiesced
 		isQuiesced = true
 		if isInCheck {
-			stats.QMates++
-			bestMove, bestEval = NoMove, negaMateEval(board, depthFromRoot) // TODO checks for mate again expensively
+			s.stats.QMates++
+			bestMove, bestEval = NoMove, negaMateEval(s.board, depthFromRoot) // TODO checks for mate again expensively
 		} else {
 			// Already quiesced - just return static eval
 			bestMove, bestEval = NoMove, staticNegaEval
@@ -1298,20 +1319,20 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		}
 		deepKiller := NoMove
 		if UseQDeepKillerMoves {
-			deepKiller = deepKillers[depthFromRoot]
+			deepKiller = s.deepKillers[depthFromRoot]
 		}
 		
 		// Sort the moves heuristically
 		if UseQSearchMoveOrdering {
 			if len(legalMoves) > 1 {
-				orderMoves(board, legalMoves, qttMove, killerMove, deepKiller, &stats.QKillers, &stats.QDeepKillers)
+				orderMoves(s.board, legalMoves, qttMove, killerMove, deepKiller, &s.stats.QKillers, &s.stats.QDeepKillers)
 				if UseQSearchRampagePruning {
-					nMovesToUse = pruneQueenRampages(board, legalMoves, depthFromQRoot, stats)
+					nMovesToUse = pruneQueenRampages(s.board, legalMoves, depthFromQRoot, s.stats)
 				}
 			}
 		} else if UseQKillerMoves {
 			// Place killer-move (or deep killer move) first if it's there
-			prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, deepKillers[depthFromRoot], &stats.QKillers, &stats.QDeepKillers)
+			prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.QKillers, &s.stats.QDeepKillers)
 		}
 		
 		// We're quiesced as long as all children (we visit) are quiesced.
@@ -1326,19 +1347,19 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			var eval EvalCp
 
 			// Make the move
-			unapply := board.Apply(move)
+			unapply := s.board.Apply(move)
 
 			if qDepthToGo <= 1 {
-				stats.QNodes++
-				stats.QPrunes++
+				s.stats.QNodes++
+				s.stats.QPrunes++
 				
 				// We hit max depth before quiescing
 				isQuiesced = false
 				// Ignore mate check to avoid generating moves at all leaf nodes
-				eval = NegaStaticEval(board)
+				eval = NegaStaticEval(s.board)
 			} else {
 				var isChildQuiesced bool
-				childKiller, eval, isChildQuiesced = qsearchNegAlphaBeta(board, qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, childKiller, deepKillers, stats)
+				childKiller, eval, isChildQuiesced = s.QSearchNegAlphaBeta(qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, childKiller)
 				isQuiesced = isQuiesced && isChildQuiesced
 			}
 			eval = -eval // back to our perspective
@@ -1359,14 +1380,14 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			if alpha >= beta {
 				// beta cut-off
 				if bestMove == qttMove {
-					stats.QttLateCuts++
+					s.stats.QttLateCuts++
 				} else if bestMove == killerMove {
-					stats.QKillerCuts++
+					s.stats.QKillerCuts++
 				} else if bestMove == deepKiller {
-					stats.QDeepKillerCuts++
+					s.stats.QDeepKillerCuts++
 				}
 				if i == 0 {
-					stats.QFirstChildCuts++
+					s.stats.QFirstChildCuts++
 				}
 				break
 			}
@@ -1374,19 +1395,19 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 
 		// Was stand-pat the best after all?
 		if bestEval == staticNegaEval {
-			stats.QPats++
+			s.stats.QPats++
 		}
 
 		// If we didn't get a beta cut-off then we visited all children.
 		if bestEval <= origBeta {
-			stats.QAllChildrenNodes++
+			s.stats.QAllChildrenNodes++
 		}
-		deepKillers[depthFromRoot] = bestMove
+		s.deepKillers[depthFromRoot] = bestMove
 		
 	}
 
 	if isQuiesced {
-		stats.QQuiesced++
+		s.stats.QQuiesced++
 	}
 
 	// Update the QTT
@@ -1398,7 +1419,7 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 			evalType = TTEvalUpperBound
 		}
 		// Write back the QTT entry - this is an update if the TT already contains an entry for this hash
-		writeQttEntry(qtt, board.Hash(), bestEval, bestMove, qDepthToGo, evalType, isQuiesced)
+		writeQttEntry(qtt, s.board.Hash(), bestEval, bestMove, qDepthToGo, evalType, isQuiesced)
 	}
 	
 	return bestMove, bestEval, isQuiesced
