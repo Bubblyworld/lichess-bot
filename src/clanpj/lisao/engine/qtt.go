@@ -31,14 +31,22 @@ func isQttHit(entry *QSearchTTEntryT, zobrist uint64) bool {
 func writeQttEntry(qtt []QSearchTTEntryT, zobrist uint64, eval EvalCp, bestMove dragon.Move, qDepthToGo int, evalType TTEvalT, isQuiesced bool) {
 	var entry QSearchTTEntryT // use a full struct overwrite to obliterate old data
 
-	entry.zobrist = zobrist
+	// Do we already have an entry for the hash?
+	oldQttEntry, isHit := probeQtt(qtt, zobrist)
+
+	if isHit {
+		entry = oldQttEntry
+		updateQttEntry(&entry, eval, bestMove, qDepthToGo, evalType, isQuiesced)
+	} else {
+		// initialise a new entry
+		entry.zobrist = zobrist
 	
-	entry.eval = eval
-	entry.bestMove = bestMove
-	entry.qDepthToGo = uint8(qDepthToGo)
-	entry.evalType = evalType
-	entry.isQuiesced = isQuiesced
-	
+		entry.eval = eval
+		entry.bestMove = bestMove
+		entry.qDepthToGo = uint8(qDepthToGo)
+		entry.evalType = evalType
+		entry.isQuiesced = isQuiesced
+	}
 
 	index := qttIndex(qtt, zobrist)
 	qtt[index] = entry
@@ -113,17 +121,12 @@ func updateQttEntry(entry *QSearchTTEntryT, eval EvalCp, bestMove dragon.Move, q
 	}
 }
 
-// Return QTT hit and isExactHit, or nil
-func probeQtt(qtt []QSearchTTEntryT, zobrist uint64, qDepthToGo int) *QSearchTTEntryT {
-
+// Return a copy of the TT entry, and whether it is a hit
+// We copy to avoid entry overwrite shenanigans
+func probeQtt(qtt []QSearchTTEntryT, zobrist uint64) (QSearchTTEntryT, bool) {
 	index := qttIndex(qtt, zobrist) 
-	var entry *QSearchTTEntryT = &qtt[index]
-	
-	if isQttHit(entry, zobrist) {
-		// update stats
-		entry.nHits++
-		return entry
-	}
-	return nil
+	var entry QSearchTTEntryT = qtt[index]
+
+	return entry, isQttHit(&entry, zobrist)
 }
 

@@ -830,14 +830,12 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 	origBeta := beta
 	origAlpha := alpha
 
-	// Probe the Quiescence Transposition Table
-	var ttEntry *TTEntryT = nil
+	// Probe the Transposition Table
 	var ttMove = NoMove
-	
 	if UseTT {
-		ttEntry = probeTT(tt, board.Hash(), depthToGo)
+		ttEntry, isTTHit := probeTT(tt, board.Hash())
 
-		if ttEntry != nil {
+		if isTTHit {
 			stats.TTHits++
 
 			// Pick the right parity if it's available, else anything
@@ -1060,13 +1058,8 @@ done:
 			} else if bestEval <= origAlpha {
 				evalType = TTEvalUpperBound
 			}
-			if ttEntry == nil {
-				// Write a new TT entry
-				writeTTEntry(tt, board.Hash(), bestEval, bestMove, depthToGo, evalType)
-			} else {
-				// Update the existing QTT entry
-				updateTTEntry(ttEntry, bestEval, bestMove, depthToGo, evalType)
-			}
+			// Write back the TT entry - this is an update if the TT already contains an entry for this hash
+			writeTTEntry(tt, board.Hash(), bestEval, bestMove, depthToGo, evalType)
 		}
 	}
 
@@ -1145,13 +1138,11 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
 
 	// Probe the Quiescence Transposition Table
-	var qttEntry *QSearchTTEntryT = nil
 	var qttMove = NoMove
-	
 	if UseQSearchTT {
-		qttEntry = probeQtt(qtt, board.Hash(), qDepthToGo)
+		qttEntry, isQttHit := probeQtt(qtt, board.Hash())
 
-		if qttEntry != nil {
+		if isQttHit {
 			stats.QttHits++
 
 			qttMove = qttEntry.bestMove
@@ -1324,13 +1315,8 @@ func qsearchNegAlphaBeta(board *dragon.Board, qDepthToGo int, depthFromRoot int,
 		} else if bestEval <= origAlpha {
 			evalType = TTEvalUpperBound
 		}
-		if qttEntry == nil {
-			// Write a new QTT entry
-			writeQttEntry(qtt, board.Hash(), bestEval, bestMove, qDepthToGo, evalType, isQuiesced)
-		} else {
-			// Update the existing QTT entry
-			updateQttEntry(qttEntry, bestEval, bestMove, qDepthToGo, evalType, isQuiesced)
-		}
+		// Write back the QTT entry - this is an update if the TT already contains an entry for this hash
+		writeQttEntry(qtt, board.Hash(), bestEval, bestMove, qDepthToGo, evalType, isQuiesced)
 	}
 	
 	return bestMove, bestEval, isQuiesced

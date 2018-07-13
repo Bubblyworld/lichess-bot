@@ -45,17 +45,24 @@ func depthToGoParity(depthToGo int) int { return depthToGo & 1 }
 func writeTTEntry(tt []TTEntryT, zobrist uint64, eval EvalCp, bestMove dragon.Move, depthToGo int, evalType TTEvalT) {
 	var entry TTEntryT // use a full struct overwrite to obliterate old data
 
-	entry.zobrist = zobrist
+	// Do we already have an entry for the hash?
+	oldTTEntry, isHit := probeTT(tt, zobrist)
 
-	pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
-	
-	pEntry.eval = eval
-	pEntry.bestMove = bestMove
-	pEntry.depthToGo = uint8(depthToGo)
-	pEntry.evalType = evalType
-	
+	if isHit {
+		entry = oldTTEntry
+		updateTTEntry(&entry, eval, bestMove, depthToGo, evalType)
+	} else {
+		// initialise a new entry
+		entry.zobrist = zobrist
 
-	index := ttIndex(tt, zobrist)
+		pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
+		
+		pEntry.eval = eval
+		pEntry.bestMove = bestMove
+		pEntry.depthToGo = uint8(depthToGo)
+		pEntry.evalType = evalType
+	}
+	index := ttIndex(tt, zobrist) 
 	tt[index] = entry
 }
 
@@ -128,14 +135,11 @@ func updateTTEntry(entry *TTEntryT, eval EvalCp, bestMove dragon.Move, depthToGo
 	}
 }
 
-// Return TT hit or nil
-func probeTT(tt []TTEntryT, zobrist uint64, depthToGo int) *TTEntryT {
-
+// Return a copy of the TT entry, and whether it is a hit
+// We copy to avoid entry overwrite shenanigans
+func probeTT(tt []TTEntryT, zobrist uint64) (TTEntryT, bool) {
 	index := ttIndex(tt, zobrist) 
-	var entry *TTEntryT = &tt[index]
-	
-	if isTTHit(entry, zobrist) {
-		return entry
-	}
-	return nil
+	var entry TTEntryT = tt[index]
+
+	return entry, isTTHit(&entry, zobrist)
 }
