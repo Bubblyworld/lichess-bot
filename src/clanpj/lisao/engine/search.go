@@ -22,6 +22,8 @@ type SearchStatsT struct {
 	AllChildrenNodes uint64  // #non-leaf nodes with no beta cut
 	NullMoveCuts uint64      // #nodes that cut due to null move heuristic
 	Killers uint64           // #nodes with killer move available
+	ValidHintMoves uint64    // #nodes with a known valid move before we do movegen - either a TT hit or a known valid killer move
+	HintMoveCuts uint64      // #nodes with hint move cut (before movegen)
 	KillerCuts uint64        // #nodes with killer move cut
 	DeepKillers uint64       // #nodes with deep killer move available
 	DeepKillerCuts uint64    // #nodes with deep killer move cut
@@ -72,6 +74,7 @@ var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 7                 // Ignored now that time control is implemented
 var SearchCutoffPercent = 25        // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
 var HeurUseNullMove = true
+var UseEarlyMoveHint = false        // Try the hint move before doing movegen - worse until we can do early null-move heuristic (requires in-check test)
 var UseMoveOrdering = true
 var UseIDMoveHint = true
 var MinIDMoveHintDepth = 3
@@ -811,6 +814,9 @@ func ResetTT() {
 	tt = make([]TTEntryT, TTSize)
 }
 
+var hashclash = make(map[string]uint64)
+var clashdumped = false
+
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
 func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, deepKillers []dragon.Move, parentNullMove bool, stats *SearchStatsT, timeout *uint32) (dragon.Move, EvalCp) {
 
@@ -837,7 +843,7 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 
 		if isTTHit {
 			stats.TTHits++
-
+			
 			// Pick the right parity if it's available, else anything
 			ttpEntry := &ttEntry.parityHits[depthToGoParity(depthToGo)]
 			if(ttpEntry.evalType == TTInvalid) {
@@ -890,12 +896,80 @@ func negAlphaBeta(board *dragon.Board, ht HistoryTableT, depthToGo int, depthFro
 	// Maximise eval with beta cut-off
 	bestMove := NoMove
 	bestEval := YourCheckMateEval
+	childKiller := NoMove
 
 	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
 	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
 done:
 	for once := true; once; once = false {
 
+		// TODO also use killer moves, but need to check them first for validity
+		hintMove := ttMove
+		
+		// Try hint move before doing move-gen if we have a known valid move hint
+		if UseEarlyMoveHint {
+			if hintMove != NoMove {
+				stats.ValidHintMoves++
+				// Make the move
+				unapply := board.Apply(hintMove)
+				// Add to the move history
+				repetitions := ht.Add(board.Hash())
+				
+				// Get the (deep) eval
+				var eval EvalCp
+				// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
+				// This reduces the search tree a bit and is common practice in chess engines.
+				if UsePosRepetition && repetitions > 1 {
+					stats.PosRepetitions++
+					eval = DrawEval
+				} else if depthToGo <= 1 {
+					stats.Nodes ++
+					if UseQSearch {
+						// Quiesce
+						childKiller, eval, _ = qsearchNegAlphaBeta(board, QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childKiller, deepKillers, stats)
+					} else {
+						eval = NegaStaticEval(board)
+					}
+				} else {
+					childKiller, eval = negAlphaBeta(board, ht, depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, deepKillers, false, stats, timeout)
+				}
+				eval = -eval // back to our perspective
+				
+				// Remove from the move history
+				ht.Remove(board.Hash())
+				// Take back the move
+				unapply()
+				
+				// Bail cleanly without polluting search results if we have timed out
+				if depthToGo > 1 && isTimedOut(timeout) {
+					break done
+				}
+				
+				// Maximise our eval.
+				// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
+				if eval > bestEval {
+					bestEval, bestMove = eval, hintMove
+				}
+				
+				if alpha < bestEval {
+					alpha = bestEval
+				}
+				
+				// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
+				if alpha >= beta {
+					// beta cut-off
+					stats.HintMoveCuts++
+					stats.FirstChildCuts++
+					if depthFromRoot < MaxDepthStats {
+						stats.FirstChildCutsAt[depthFromRoot]++
+					}
+					
+					break done
+				}
+			}
+		}
+
+			
 		// Generate all legal moves
 		legalMoves, isInCheck := board.GenerateLegalMoves2(false/*all moves*/)
 		
@@ -921,6 +995,11 @@ done:
 					nullMoveEval = -nullMoveEval // back to our perspective
 					unapply()
 					
+					// Bail cleanly without polluting search results if we have timed out
+					if depthToGo > 1 && isTimedOut(timeout) {
+						break done
+					}
+			
 					// Maximise our eval.
 					// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 					if nullMoveEval > bestEval {
@@ -974,9 +1053,12 @@ done:
 			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, deepKillers[depthFromRoot], &stats.Killers, &stats.DeepKillers)
 		}
 		
-		childKiller := NoMove
-		
 		for i, move := range legalMoves {
+			// Don't repeat the hintMove
+			if UseEarlyMoveHint && move == hintMove {
+				continue
+			}
+				
 			// Make the move
 			unapply := board.Apply(move)
 			// Add to the move history
@@ -1041,14 +1123,14 @@ done:
 				break
 			}
 		}
-		
+	
 		// If we didn't get a beta cut-off then we visited all children.
 		if bestEval <= origBeta {
 			stats.AllChildrenNodes++
 		}
 		deepKillers[depthFromRoot] = bestMove
 	} // end of fake run-once loop
-	
+
 	if UseTT {
 		// Update the TT - but only if the search was not truncated due to a time-out
 		if !isTimedOut(timeout) {
