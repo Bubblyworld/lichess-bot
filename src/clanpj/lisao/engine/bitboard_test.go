@@ -27,7 +27,7 @@ func TestBitboard(t *testing.T) {
 
 	testResult(t, "WPawnScope(0x0180000000000100) is 0x%016x expected 0x%016x\n", WPawnScope(0x0180000000000100), 0xc303030303030000)
 	testResult(t, "WPawnScope(0x8140000000000200) is 0x%016x expected 0x%016x\n", WPawnScope(0x8140000000000200), 0xe707070707070000)
-	
+
 	testResult(t, "BPawnScope(0x0001000000008001) is 0x%016x expected 0x%016x\n", BPawnScope(0x0001000000008001), 0x00000303030303c3)
 	testResult(t, "BPawnScope(0x0002000000004081) is 0x%016x expected 0x%016x\n", BPawnScope(0x0002000000004081), 0x00000707070707e7)
 }

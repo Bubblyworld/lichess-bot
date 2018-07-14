@@ -7,16 +7,16 @@ import (
 )
 
 type TTParityEntryT struct {
-	eval EvalCp
-	bestMove dragon.Move
+	eval      EvalCp
+	bestMove  dragon.Move
 	depthToGo uint8
-	evalType TTEvalT
-}	
+	evalType  TTEvalT
+}
 
 // Members ordered by descending size for better packing
 type TTEntryT struct {
 	zobrist uint64 // Zobrist hash from dragontoothmg
-	               // Could just store hi bits cos the hash index encodes the low bits implicitly which would bring the struct size to < 16 bytes
+	// Could just store hi bits cos the hash index encodes the low bits implicitly which would bring the struct size to < 16 bytes
 	parityHits [2]TTParityEntryT
 }
 
@@ -24,15 +24,15 @@ type TTEntryT struct {
 type TTEvalT uint8
 
 const (
-	TTInvalid TTEvalT = iota   // must be the 0 item
+	TTInvalid TTEvalT = iota // must be the 0 item
 	TTEvalExact
-	TTEvalLowerBound           // from beta cut-off
-	TTEvalUpperBound           // from alpha cut-off
+	TTEvalLowerBound // from beta cut-off
+	TTEvalUpperBound // from alpha cut-off
 )
 
 func ttIndex(tt []TTEntryT, zobrist uint64) int {
 	// Note: assumes tt size is a power of 2!!!
-	return int(zobrist) & (len(tt)-1)
+	return int(zobrist) & (len(tt) - 1)
 }
 
 func isTTHit(entry *TTEntryT, zobrist uint64) bool {
@@ -56,13 +56,13 @@ func writeTTEntry(tt []TTEntryT, zobrist uint64, eval EvalCp, bestMove dragon.Mo
 		entry.zobrist = zobrist
 
 		pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
-		
+
 		pEntry.eval = eval
 		pEntry.bestMove = bestMove
 		pEntry.depthToGo = uint8(depthToGo)
 		pEntry.evalType = evalType
 	}
-	index := ttIndex(tt, zobrist) 
+	index := ttIndex(tt, zobrist)
 	tt[index] = entry
 }
 
@@ -119,14 +119,13 @@ func evalIsBetter2(pEntry *TTParityEntryT, eval EvalCp, depthToGo8 uint8, evalTy
 	return false // unreachable
 }
 
-
 // Update a TT entry
 // There is policy in here, because we need to decide whether to overwrite or not with different depths and eval types.
 // TODO - tune
 func updateTTEntry(entry *TTEntryT, eval EvalCp, bestMove dragon.Move, depthToGo int, evalType TTEvalT) {
 	depthToGo8 := uint8(depthToGo)
 	pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
-	
+
 	if evalIsBetter(pEntry, eval, depthToGo8, evalType) {
 		pEntry.eval = eval
 		pEntry.bestMove = bestMove
@@ -138,7 +137,7 @@ func updateTTEntry(entry *TTEntryT, eval EvalCp, bestMove dragon.Move, depthToGo
 // Return a copy of the TT entry, and whether it is a hit
 // We copy to avoid entry overwrite shenanigans
 func probeTT(tt []TTEntryT, zobrist uint64) (TTEntryT, bool) {
-	index := ttIndex(tt, zobrist) 
+	index := ttIndex(tt, zobrist)
 	var entry TTEntryT = tt[index]
 
 	return entry, isTTHit(&entry, zobrist)
