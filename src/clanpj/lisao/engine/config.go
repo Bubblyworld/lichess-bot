@@ -9,10 +9,7 @@ const MaxQDepthStats = 16
 type SearchAlgorithmT int
 
 const (
-	MiniMax SearchAlgorithmT = iota
-	NegaMax
-	AlphaBeta
-	NegAlphaBeta
+	NegAlphaBeta SearchAlgorithmT = iota
 )
 
 var SearchAlgorithm = NegAlphaBeta
@@ -39,12 +36,6 @@ var UseQDeepKillerMoves = true // only valid if UseQKillerMoves == true
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {
-	case MiniMax:
-		return "MiniMax"
-	case NegaMax:
-		return "NegaMax"
-	case AlphaBeta:
-		return "AlphaBeta"
 	case NegAlphaBeta:
 		return "NegAlphaBeta"
 	default:

@@ -95,21 +95,6 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 		start := time.Now()
 
 		switch SearchAlgorithm {
-		case MiniMax:
-			bestMove, eval = s.MiniMax(depthToGo /*depthFromRoot*/, 0)
-
-		case NegaMax:
-			var negaEval EvalCp
-			bestMove, negaEval = s.NegaMax(depthToGo /*depthFromRoot*/, 0)
-			eval = negaEval
-			if !board.Wtomove {
-				eval = -negaEval
-			}
-
-		case AlphaBeta:
-			// Use the best move from the previous depth as the killer move for this depth
-			bestMove, eval = s.AlphaBeta(depthToGo /*depthFromRoot*/, 0, BlackCheckMateEval, WhiteCheckMateEval, fullBestMove)
-
 		case NegAlphaBeta:
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp

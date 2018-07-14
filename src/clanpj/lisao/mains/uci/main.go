@@ -37,7 +37,7 @@ func uciLoop() {
 		case "uci":
 			fmt.Println("id name Lisao", VersionString)
 			fmt.Println("id author Clan PJ")
-			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var NegaMax var AlphaBeta var NegAlphaBeta")
+			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var NegAlphaBeta")
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name SearchCutoffPercent type spin default", engine.SearchCutoffPercent, "min 1 max 100")
 			fmt.Println("option name TimeLeftPerMoveDivisor type spin default", TimeLeftPerMoveDivisor, "min 2 max 200")
@@ -82,12 +82,6 @@ func uciLoop() {
 			switch strings.ToLower(tokens[2]) {
 			case "searchalgorithm":
 				switch strings.ToLower(tokens[4]) {
-				case "minimax":
-					engine.SearchAlgorithm = engine.MiniMax
-				case "negamax":
-					engine.SearchAlgorithm = engine.NegaMax
-				case "alphabeta":
-					engine.SearchAlgorithm = engine.AlphaBeta
 				case "negalphabeta":
 					engine.SearchAlgorithm = engine.NegAlphaBeta
 				default:
@@ -426,7 +420,7 @@ func uciLoop() {
 			if strings.ToLower(posScanner.Text()) == "startpos" {
 				board = dragon.ParseFen(dragon.Startpos)
 				ht.Add(board.Hash()) // record that this state has occurred
-				posScanner.Scan() // advance the scanner to leave it in a consistent state
+				posScanner.Scan()    // advance the scanner to leave it in a consistent state
 			} else if strings.ToLower(posScanner.Text()) == "fen" {
 				fenstr := ""
 				for posScanner.Scan() && strings.ToLower(posScanner.Text()) != "moves" {
@@ -491,13 +485,12 @@ var timeout uint32
 // Timer controlling the timeout variable
 var timeoutTimer *time.Timer
 
-
 // Lightweight wrapper around Lisao Search.
 // Prints the results (bestmove) and various stats.
 func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	// Reset the timeout
 	atomic.StoreUint32(&timeout, 0)
-	
+
 	// Time the search
 	start := time.Now()
 
@@ -553,7 +546,7 @@ func uciStartTimer(timeoutMs int) {
 		return
 	}
 	// TODO - atomic!
-	timeoutTimer = time.AfterFunc(time.Duration(timeoutMs) * time.Millisecond, func() { uciStop() })
+	timeoutTimer = time.AfterFunc(time.Duration(timeoutMs)*time.Millisecond, func() { uciStop() })
 }
 
 // Explicitly stop the search by canceling the timer and setting the timeout shared memory address.
@@ -564,7 +557,7 @@ func uciStop() {
 		// TODO atomic!
 		timeoutTimer = nil
 	}
-		
+
 	// Notify search threads to bail
 	atomic.StoreUint32(&timeout, 1)
 }
