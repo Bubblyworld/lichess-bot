@@ -43,16 +43,14 @@ type SearchT struct {
 	timeout     *uint32
 }
 
-// What is the correct way to do this in Go?
 func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) *SearchT {
-	var s SearchT
-	s.board = board
-	s.ht = ht
-	s.deepKillers = deepKillers
-	s.stats = stats
-	s.timeout = timeout
-
-	return &s
+	return &SearchT{
+		board:       board,
+		ht:          ht,
+		deepKillers: deepKillers,
+		stats:       stats,
+		timeout:     timeout,
+	}
 }
 
 // Return eval from white's perspective, and the best move plus some search stats
