@@ -244,3 +244,35 @@ func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, ki
 	mo := byMoValueDesc{moves, values}
 	sort.Sort(&mo)
 }
+
+// TODO actually make fast
+func fastIsInCheck(board *dragon.Board) bool {
+	return board.OurKingInCheck()
+}
+
+// true iff the given (typically 'killer') move is valid - neither catured nor blocked by the last opponent move.
+func isValidMove(myMove dragon.Move, yourLastMoveInfo *dragon.MoveApplication) bool {
+	myFrom, myTo := move.From(), move.To()
+
+	if myFrom == yourLastMoveInfo.CaptureLocation {
+		// captured
+		return false
+	}
+
+	myTo, yourTo := myMove.To(), yourLastMoveInfo.Move.To()
+
+	toDirDist := dirDist(myTo, yourTo)
+
+	if toDirDist.dir == InvalidDir {
+		// last move does not impact this move at all
+		return true
+	}
+
+	myDirDist := dirDist(myTo, myFrom)
+
+	// To block, the last move must be in the direction of this move, and closer to the destination square
+	// TODO crap, not good enough because the killer move could have been a response to a move than enabled it (slider move)
+	// Need to generate a bitset of the move and & it with opposition pieces.
+	return toDirDist.dir == myDirDist.dir && toDirDist.dist < myDirDist.dist
+}
+

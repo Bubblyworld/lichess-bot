@@ -92,11 +92,53 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 done:
 	for once := true; once; once = false {
 
+		isInCheck := fastIsInCheck(s.board)
+
+		// Early Null Move Heuristic
+		if HeurUseNullMove {
+			const nullMoveDepthSkip = 3 // must be odd to cope with our even/odd ply eval instability
+			// Try null-move - but never 2 null moves in a row, and never in check otherwise king gets captured
+			if !isInCheck && !parentNullMove && beta != MyCheckMateEval && depthToGo > nullMoveDepthSkip {
+				// Use piece count to determine end-game for zugzwang avoidance - TODO improve this
+				nNonPawns := bits.OnesCount64((s.board.White.All & ^s.board.White.Pawns) | (s.board.Black.All & ^s.board.Black.Pawns))
+				// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
+				if nNonPawns >= 6 {
+					unapply := s.board.ApplyNullMove()
+					_, nullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/ /*parentNullMove*/, true)
+					nullMoveEval = -nullMoveEval // back to our perspective
+					unapply()
+
+					// Bail cleanly without polluting search results if we have timed out
+					if depthToGo > 1 && isTimedOut(s.timeout) {
+						break done
+					}
+
+					// Maximise our eval.
+					// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
+					if nullMoveEval > bestEval {
+						bestMove, bestEval = NoMove, nullMoveEval
+					}
+
+					if alpha < bestEval {
+						alpha = bestEval
+					}
+
+					// Did null-move heuristic already provide a cut?
+					if alpha >= beta {
+						s.stats.NullMoveCuts++
+
+						break done
+					}
+
+				}
+			}
+		}
+
 		// TODO also use killer moves, but need to check them first for validity
 		hintMove := ttMove
 
 		// Try hint move before doing move-gen if we have a known valid move hint
-		if UseEarlyMoveHint {
+		if UseEarlyMoveHint && !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth) {
 			if hintMove != NoMove {
 				s.stats.ValidHintMoves++
 				// Make the move
@@ -170,7 +212,7 @@ done:
 		}
 
 		// Try null-move heuristic
-		if HeurUseNullMove {
+		if false/*done already*/ && HeurUseNullMove {
 			const nullMoveDepthSkip = 3 // must be odd to cope with our even/odd ply eval instability
 			// Try null-move - but never 2 null moves in a row, and never in check otherwise king gets captured
 			if !isInCheck && !parentNullMove && beta != MyCheckMateEval && depthToGo > nullMoveDepthSkip {
@@ -242,7 +284,7 @@ done:
 
 		for i, move := range legalMoves {
 			// Don't repeat the hintMove
-			if UseEarlyMoveHint && move == hintMove {
+			if UseEarlyMoveHint && !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth) && move == hintMove {
 				continue
 			}
 
