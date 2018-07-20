@@ -92,7 +92,7 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 done:
 	for once := true; once; once = false {
 
-		isInCheck := fastIsInCheck(s.board)
+		isInCheck := isInCheckFast(s.board)
 
 		// Early Null Move Heuristic
 		if HeurUseNullMove {

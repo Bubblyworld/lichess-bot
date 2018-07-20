@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"math/bits"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -245,34 +246,115 @@ func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, ki
 	sort.Sort(&mo)
 }
 
-// TODO actually make fast
-func fastIsInCheck(board *dragon.Board) bool {
+// TODO actually make fast(er)
+func isInCheckFast(board *dragon.Board) bool {
 	return board.OurKingInCheck()
 }
 
-// true iff the given (typically 'killer') move is valid - neither catured nor blocked by the last opponent move.
-func isValidMove(myMove dragon.Move, yourLastMoveInfo *dragon.MoveApplication) bool {
-	myFrom, myTo := move.From(), move.To()
+// true iff the given (typically 'killer') move is definitely valid, i.e.
+//   1. Piece is there (not captured) and it's a valid move direction for the piece
+//   2. Piece is not blocked by another piece
+//   3. Move does not discover check
+// It's ok to return a false negative (i.e. return false for a valid move), but we return true only
+//  if the move is definitely valid.
+func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
+	ourFrom := ourMove.From()
+	ourFromBit := uint64(1) << ourFrom
 
-	if myFrom == yourLastMoveInfo.CaptureLocation {
-		// captured
+	yourAll, ourAll, ourKings := board.White.All, board.Black.All, board.Black.Kings
+	if board.Wtomove {
+		yourAll, ourAll, ourKings = board.Black.All, board.White.All, board.White.Kings
+	}
+
+	// If it's a king move then bail - too complicated to compute check after the move, castling through check, etc.
+	if (ourKings & ourFromBit) != 0 {
+		return false // TODO can we try harder?
+	}
+	
+	// Are we moving our own piece?
+	if (ourAll & ourFromBit) == 0 {
 		return false
 	}
 
-	myTo, yourTo := myMove.To(), yourLastMoveInfo.Move.To()
+	ourTo := ourMove.To()
+	ourToBit := uint64(1) << ourTo
 
-	toDirDist := dirDist(myTo, yourTo)
+	// Get the move type - we assume that the move is not complete nonsense
+	ourDirDist := dirDist(ourFrom, ourTo)
+	ourDirFlag := dirFlag(ourDirDist.dir)
 
-	if toDirDist.dir == InvalidDir {
-		// last move does not impact this move at all
+	bothAll := board.White.All | board.Black.All
+	ourPiece := board.PieceAt(ourFrom)
+
+	// Is this a valid move path for the piece - valid direction and not blocked
+	if ourPiece == dragon.Pawn {
+		ourPawnPushFlags, ourPawnCaptureFlags := blackPawnPushFlags, blackPawnCaptureFlags
+		if board.Wtomove {
+			ourPawnPushFlags, ourPawnCaptureFlags = whitePawnPushFlags, whitePawnCaptureFlags
+		}
+		// Pawns are special cos their direction has to match whether they are capturing or not.
+		// TODO - must do this better/properly with forward directions only for each colour
+		if ourDirFlag & ourPawnPushFlags != 0 {
+			// Pawn push - target square must be open
+			// TODO 2-square pawn push
+			if ourDirDist.dist != 1 || (bothAll & ourToBit) != 0 {
+				return false
+			}
+		} else if ourDirFlag & ourPawnCaptureFlags != 0 {
+			// Capture - target square must be opposition piece
+			// TODO en-passant
+			if ourDirDist.dist != 1 || (yourAll & ourToBit) == 0 {
+				return false
+			}
+		} else {
+			// Invalid pawn move
+			return false
+		}
+	} else {
+		// Non-pawn - is this a valid direction for the move type
+		if (PieceToDirFlags[ourPiece] & ourDirFlag) == 0 {
+			return false
+		}
+		// Target square must be open or opposition piece
+		if (ourToBit & ourAll) != 0 {
+			return false
+		}
+		// Is there another piece blocking the path - only need to check multi-square slider moves
+		if ourDirDist.dist != 1 {
+			if isSliderPathBlocked(ourFrom, ourDirDist.dir, ourDirDist.dist, bothAll) {
+				return false
+			}
+		}
+	}
+
+	// If we get here then the move itself looks good, so check for discovered check
+
+	kingPos := uint8(bits.TrailingZeros64(ourKings))
+	kingDirDist := dirDist(kingPos, ourFrom)
+	kingDirFlag := dirFlag(kingDirDist.dir)
+
+	// If king direction from piece starting position is not a slider direction
+	//   then there is no opportunity for discovered check
+	if kingDirFlag & queenDirFlags == 0 {
 		return true
 	}
 
-	myDirDist := dirDist(myTo, myFrom)
+	// If the move is towards or away from the king then there is no opportunity for discovered check,
+	//   because the piece itself is still blocking all possible discoveries.
+	if kingDirFlag & (ourDirFlag | dirFlag(oppositeDir[ourDirDist.dir])) != 0 {
+		return true
+	}
 
-	// To block, the last move must be in the direction of this move, and closer to the destination square
-	// TODO crap, not good enough because the killer move could have been a response to a move than enabled it (slider move)
-	// Need to generate a bitset of the move and & it with opposition pieces.
-	return toDirDist.dir == myDirDist.dir && toDirDist.dist < myDirDist.dist
+	// If there is another piece blocking the path to the king then we're good
+	if isSliderPathBlocked(kingPos, kingDirDist.dir, kingDirDist.dist, bothAll) {
+		return true
+	}
+
+	// TODO - ok, we are exposed to discovered check, but is there an opponent piece taking advantage?
+	// At the moment I don't have a good way to determine this other than brute force.
+	// Need to generate bits for the full direction away from the king and determine the closest
+	//   opponent piece (which is either the highest or lowest bit depending on direction)
+	//   and then check whether that piece attacks along the same direction.
+	return false
 }
 
