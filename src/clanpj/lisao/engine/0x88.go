@@ -111,7 +111,7 @@ var oppositeDir = [NDirs]DirT {
 	SWDir, //NEDir
 	NEDir, //SWDir
 	NWDir, //SEDir
-	// Knight dir (just need one cos it's not a slider)
+	// Knight dir (not valid here)
 	KnightDir}
 
 type DirFlagT int
@@ -150,7 +150,51 @@ var x88DiffToDirDist [0x77+0x77+1]DirDistT
 
 const maxPathDist = uint8(7)
 
-var dirDistPathBits[KnightDir][maxPathDist]uint64
+// Bitboard base bit for each path direction
+var pathBasePos = [NDirs]uint8 {
+	0,
+	// Rook dirs
+	0, // NDir - a1-based
+	63, // SDir - h8-based
+	63, // WDir - h8-based
+	0, // EDir - a1-based
+	// Bishop dirs
+	7, // NWDir - a8-based
+	0, // NEDir a1-based
+	63, // SWDir h8-based
+	56, // SEDir h1-based
+	// Knight dir (not valid here)
+	0}
+
+// 
+// These always exclude the starting square.
+var dirDistPathBits = [NDirs][maxPathDist+1]uint64 {
+	//InvalidDir
+	{ 0, 0, 0, 0, 0, 0, 0, 0},
+	
+	// Rook dirs
+	//NDir - a1-based
+	{ 0, 0x0000000000000100, 0x0000000000010100, 0x0000000001010100, 0x0000000101010100, 0x0000010101010100, 0x0001010101010100, 0x0101010101010100},
+	//SDir - h8-based
+	{ 0, 0x0080000000000000, 0x0080800000000000, 0x0080808000000000, 0x0080808080000000, 0x0080808080800000, 0x0080808080808000, 0x0080808080808080},
+	//WDir - h8-based
+	{ 0, 0x4000000000000000, 0x6000000000000000, 0x7000000000000000, 0x7800000000000000, 0x7c00000000000000, 0x7e00000000000000, 0x7f00000000000000},
+	//EDir - a1-based
+	{ 0, 0x0000000000000002, 0x0000000000000006, 0x000000000000000e, 0x000000000000001e, 0x000000000000003e, 0x000000000000007e, 0x00000000000000fe},
+	
+	// Bishop dirs
+	//NWDir - a8-based
+	{ 0, 0x0000000000004000, 0x0000000000204000, 0x0000000010204000, 0x0000000810204000, 0x0000040810204000, 0x0002040810204000, 0x0102040810204000},
+	//NEDir - a1-based
+	{ 0, 0x0000000000000200, 0x0000000000040200, 0x0000000008040200, 0x0000001008040200, 0x0000201008040200, 0x0040201008040200, 0x8040201008040200},
+	//SWDir - h8-based
+	{ 0, 0x0040000000000000, 0x0040200000000000, 0x0040201000000000, 0x0040201008000000, 0x0040201008040000, 0x0040201008040200, 0x0040201008040201},
+	//SEDir - h1-based
+	{ 0, 0x0002000000000000, 0x0002040000000000, 0x0002040800000000, 0x0002040810000000, 0x0002040810200000, 0x0002040810204000, 0x0002040810204080},
+	
+	// Knight dir (not valid here)
+	//KnightDir
+	{ 0, 0, 0, 0, 0, 0, 0, 0}}
 
 func x88Diff(from uint8, to uint8) int {
 	return squareTo0x88[to] - squareTo0x88[from]
@@ -167,7 +211,14 @@ func dirDist(from uint8, to uint8) DirDistT {
 
 // Excludes from and to squares
 func sliderPathMiddleBits(from uint8, dir DirT, dist uint8) uint64 {
-	return 0 // TODO
+	basePath := dirDistPathBits[dir][dist-1]
+	base := pathBasePos[dir]
+
+	if base < from {
+		return basePath << (from-base)
+	} else {
+		return basePath >> (base-from)
+	}
 }
 
 // Blockers is typically all pieces of both sides

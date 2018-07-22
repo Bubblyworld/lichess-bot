@@ -292,7 +292,7 @@ done:
 			unapply := s.board.Apply(move)
 			// Add to the move history
 			repetitions := s.ht.Add(s.board.Hash())
-
+			
 			// Get the (deep) eval
 			var eval EvalCp
 			// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
