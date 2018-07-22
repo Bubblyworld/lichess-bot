@@ -258,6 +258,12 @@ func isInCheckFast(board *dragon.Board) bool {
 // It's ok to return a false negative (i.e. return false for a valid move), but we return true only
 //  if the move is definitely valid.
 func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
+	debug := false
+	if board.ToFen() == "rnbqkbnr/pppppppp/8/8/Q1P5/8/PP1PPPPP/RNB1KBNR b KQkq - 1 1" && ourMove.String() == "d7d6" {
+		fmt.Println("                   debuging isValidMoveFast")
+		debug = true
+	}
+	
 	ourFrom := ourMove.From()
 	ourFromBit := uint64(1) << ourFrom
 
@@ -321,7 +327,7 @@ func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
 		}
 		// Is there another piece blocking the path - only need to check multi-square slider moves
 		if ourDirDist.dist != 1 {
-			if isSliderPathBlocked(ourFrom, ourDirDist.dir, ourDirDist.dist, bothAll) {
+			if isSliderPathBlocked(ourFrom, ourDirDist.dir, ourDirDist.dist, bothAll, false) {
 				return false
 			}
 		}
@@ -333,20 +339,33 @@ func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
 	kingDirDist := dirDist(kingPos, ourFrom)
 	kingDirFlag := dirFlag(kingDirDist.dir)
 
+	if debug {
+		fmt.Println("                   king pos", kingPos, "ourFrom", ourFrom, "king-dir", kingDirDist.dir, "king-dist", kingDirDist.dist)
+	}
+
 	// If king direction from piece starting position is not a slider direction
 	//   then there is no opportunity for discovered check
 	if kingDirFlag & queenDirFlags == 0 {
+		if debug {
+			fmt.Println("                   king dir not slider dir")
+		}
 		return true
 	}
 
 	// If the move is towards or away from the king then there is no opportunity for discovered check,
 	//   because the piece itself is still blocking all possible discoveries.
 	if kingDirFlag & (ourDirFlag | dirFlag(oppositeDir[ourDirDist.dir])) != 0 {
+		if debug {
+			fmt.Println("                   piece moved along discovery ray")
+		}
 		return true
 	}
 
 	// If there is another piece blocking the path to the king then we're good
-	if isSliderPathBlocked(kingPos, kingDirDist.dir, kingDirDist.dist, bothAll) {
+	if isSliderPathBlocked(kingPos, kingDirDist.dir, kingDirDist.dist, bothAll, debug) {
+		if debug {
+			fmt.Println("                   blocked king-side of moved piece")
+		}
 		return true
 	}
 
@@ -358,3 +377,13 @@ func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
 	return false
 }
 
+// Only for sanity checking
+func isValidMoveSlow(board *dragon.Board, ourMove dragon.Move) bool {
+	legalMoves, _ := board.GenerateLegalMoves2(false /*all moves*/)
+	for _, move := range legalMoves {
+		if move == ourMove {
+			return true
+		}
+	}
+	return false
+}

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"math/bits"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
@@ -134,11 +135,25 @@ done:
 			}
 		}
 
-		// TODO also use killer moves, but need to check them first for validity
-		hintMove := ttMove
-
+		hintMove := NoMove
+		
 		// Try hint move before doing move-gen if we have a known valid move hint
-		if UseEarlyMoveHint && !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth) {
+		if UseEarlyMoveHint /*&& !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth)*/ {
+			hintMove = ttMove
+			if hintMove == NoMove {
+				if killer != NoMove {
+					s.stats.EarlyKillers++
+					if !isInCheck && isValidMoveFast(s.board, killer) {
+						// if !isValidMoveSlow(s.board, killer) {
+						// 	fmt.Println("                      false positive valid killer: ", s.board.ToFen(), "move", &killer)
+						// }
+						hintMove = killer
+						s.stats.ValidEarlyKillers++
+					}
+				}
+			}
+			// TODO deep killers
+			
 			if hintMove != NoMove {
 				s.stats.ValidHintMoves++
 				// Make the move
@@ -284,7 +299,7 @@ done:
 
 		for i, move := range legalMoves {
 			// Don't repeat the hintMove
-			if UseEarlyMoveHint && !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth) && move == hintMove {
+			if UseEarlyMoveHint /*&& !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth)*/ && move == hintMove {
 				continue
 			}
 
