@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"fmt"
+	//"fmt"
 	"math/bits"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
@@ -27,7 +27,8 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	origAlpha := alpha
 
 	// Probe the Transposition Table
-	var ttMove = NoMove
+	ttMove := NoMove
+	ttDepthToGo := 0
 	if UseTT {
 		ttEntry, isTTHit := probeTT(tt, s.board.Hash())
 
@@ -40,15 +41,16 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 				ttpEntry = &ttEntry.parityHits[depthToGoParity(depthToGo)^1]
 			}
 			ttMove = ttpEntry.bestMove
+			ttDepthToGo = int(ttpEntry.depthToGo)
 
 			// If the TT hit is for exactly the same depth then use the eval; otherwise we just use the bestMove as a move hint.
 			// We use a deeper TT hit only for the same parity since our eval in start-game is unstable between even/odd plies.
 			// N.B. using deeper TT hit (eval)s changes the search tree, so disable HeurUseTTDeeperHits for correctness testing.
 			canUseTTEval := false
-			if depthToGo == int(ttpEntry.depthToGo) {
+			if depthToGo == ttDepthToGo {
 				s.stats.TTDepthHits++
 				canUseTTEval = true
-			} else if HeurUseTTDeeperHits && depthToGo < int(ttpEntry.depthToGo) && (depthToGo&1) == (int(ttpEntry.depthToGo)&1) {
+			} else if HeurUseTTDeeperHits && depthToGo < ttDepthToGo && (depthToGo&1) == (ttDepthToGo&1) {
 				s.stats.TTDeeperHits++
 				canUseTTEval = true
 			}
@@ -138,12 +140,13 @@ done:
 		hintMove := NoMove
 		
 		// Try hint move before doing move-gen if we have a known valid move hint
-		if UseEarlyMoveHint /*&& !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth)*/ {
+		if UseEarlyMoveHint && !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth) {
 			hintMove = ttMove
-			if hintMove == NoMove {
+			// Seems like valid killer move is always better than tt hit at start pos
+			if hintMove == NoMove || true /*ttDepthToGo < depthToGo-2 /prefer killer to tt unless tt hit is close depth*/ {
 				if killer != NoMove {
 					s.stats.EarlyKillers++
-					if !isInCheck && isValidMoveFast(s.board, killer) {
+					if !isInCheck && isValidMoveFast(s.board, killer, s.stats) {
 						// if !isValidMoveSlow(s.board, killer) {
 						// 	fmt.Println("                      false positive valid killer: ", s.board.ToFen(), "move", &killer)
 						// }
@@ -156,8 +159,22 @@ done:
 			
 			if hintMove != NoMove {
 				s.stats.ValidHintMoves++
+
+				// // Try to improve on it with a shallower search
+				if UseIDMoveHint && depthToGo >= MinIDMoveHintDepth && (hintMove != ttMove || ttDepthToGo < depthToGo-2) {
+					// Get the best move for a search of depth-2.
+					// We go 2 plies shallower since our eval is unstable between odd/even plies.
+					// The result is effectively the (possibly new) ttMove.
+					// TODO - weaken the beta bound (and alpha?) a bit?
+					newHintMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, hintMove, false)
+					if newHintMove != NoMove {
+						hintMove = newHintMove
+					}
+				}
+				
 				// Make the move
-				unapply := s.board.Apply(hintMove)
+				moveInfo := s.board.Apply2(hintMove)
+				s.stats.Moves++
 				// Add to the move history
 				repetitions := s.ht.Add(s.board.Hash())
 
@@ -184,7 +201,7 @@ done:
 				// Remove from the move history
 				s.ht.Remove(s.board.Hash())
 				// Take back the move
-				unapply()
+				moveInfo.Unapply()
 
 				// Bail cleanly without polluting search results if we have timed out
 				if depthToGo > 1 && isTimedOut(s.timeout) {
@@ -217,6 +234,7 @@ done:
 
 		// Generate all legal moves
 		legalMoves, isInCheck := s.board.GenerateLegalMoves2(false /*all moves*/)
+		s.stats.MoveGens++
 
 		// Check for checkmate or stalemate
 		if len(legalMoves) == 0 {
@@ -299,12 +317,20 @@ done:
 
 		for i, move := range legalMoves {
 			// Don't repeat the hintMove
-			if UseEarlyMoveHint /*&& !(UseIDMoveHint && depthToGo >= MinIDMoveHintDepth)*/ && move == hintMove {
+			if move == hintMove {
 				continue
 			}
 
 			// Make the move
-			unapply := s.board.Apply(move)
+			moveInfo := s.board.Apply2(move)
+			s.stats.Moves++
+			if !moveInfo.IsCastling && moveInfo.FromPieceType == moveInfo.ToPieceType {
+				if moveInfo.CapturedPieceType == dragon.Nothing {
+					s.stats.SimpleMoves++
+				} else if moveInfo.CaptureLocation == moveInfo.Move.To() {
+					s.stats.SimpleCaptures++
+				}
+			}
 			// Add to the move history
 			repetitions := s.ht.Add(s.board.Hash())
 			
@@ -331,7 +357,7 @@ done:
 			// Remove from the move history
 			s.ht.Remove(s.board.Hash())
 			// Take back the move
-			unapply()
+			moveInfo.Unapply()
 
 			// Bail cleanly without polluting search results if we have timed out
 			if depthToGo > 1 && isTimedOut(s.timeout) {

@@ -96,8 +96,10 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 
 	// Generate all noisy legal moves
 	legalMoves, isInCheck := s.board.GenerateLegalMoves2( /*onlyCapturesPromosCheckEvasion*/ true)
+	s.stats.QMoveGens++
 
 	if len(legalMoves) == 0 {
+		s.stats.QNoMoves++
 		// No noisy moves - checkmate or stalemate or just quiesced
 		isQuiesced = true
 		if isInCheck {
@@ -110,6 +112,9 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 	} else {
 		// Usually same as len(legalMoves) unless we prune the move list, for example queen rampage pruning
 		nMovesToUse := len(legalMoves)
+		if nMovesToUse == 1 {
+			s.stats.Q1Move++
+		}
 
 		killerMove := NoMove
 		if UseQKillerMoves {
@@ -145,7 +150,15 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 			var eval EvalCp
 
 			// Make the move
-			unapply := s.board.Apply(move)
+			moveInfo := s.board.Apply2(move)
+			s.stats.QMoves++
+			if !moveInfo.IsCastling && moveInfo.FromPieceType == moveInfo.ToPieceType {
+				if moveInfo.CapturedPieceType == dragon.Nothing {
+					s.stats.QSimpleMoves++
+				} else if moveInfo.CaptureLocation == moveInfo.Move.To() {
+					s.stats.QSimpleCaptures++
+				}
+			}
 
 			if qDepthToGo <= 1 {
 				s.stats.QNodes++
@@ -163,7 +176,7 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 			eval = -eval // back to our perspective
 
 			// Take back the move
-			unapply()
+			moveInfo.Unapply()
 
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 			if eval > bestEval {

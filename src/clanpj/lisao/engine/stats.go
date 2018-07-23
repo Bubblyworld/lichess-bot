@@ -2,6 +2,10 @@ package engine
 
 type SearchStatsT struct {
 	Nodes             uint64 // #nodes visited
+	MoveGens uint64
+	Moves uint64
+	SimpleMoves uint64
+	SimpleCaptures uint64
 	Mates             uint64 // #true terminal nodes
 	NonLeafs          uint64 // #non-leaf nodes
 	FirstChildCuts    uint64 // #non-leaf nodes that (beta-)cut on the first child searched
@@ -24,6 +28,12 @@ type SearchStatsT struct {
 	TTLateCuts        uint64 // #nodes with beta cutoff from TT hit
 	TTTrueEvals       uint64 // #nodes with QQT hits that are the same depth and are not a lower bound
 	QNodes            uint64 // #nodes visited in qsearch
+	QMoveGens uint64
+	QNoMoves uint64
+	Q1Move uint64
+	QMoves uint64
+	QSimpleMoves uint64
+	QSimpleCaptures uint64
 	QMates            uint64 // #true terminal nodes in qsearch
 	QNonLeafs         uint64 // #non-leaf qnodes
 	QFirstChildCuts   uint64 // #non-leaf qnodes that (beta-)cut on the first child searched
@@ -43,6 +53,20 @@ type SearchStatsT struct {
 	QttAlphaCuts      uint64 // #qnodes with beta cutoff from QTT hit
 	QttLateCuts       uint64 // #qnodes with beta cutoff from QTT hit
 	QttTrueEvals      uint64 // #qnodes with QQT hits that are the same depth and are not a lower bound
+
+	MVAll             uint64
+	MVNonKing         uint64
+	MVOurPiece        uint64
+	MVPawn            uint64
+	MVPawnPush        uint64
+	MVPawnPushOk      uint64
+	MVPawnOk          uint64
+	MVNonPawn         uint64
+	MVNonPawnOk       uint64
+	MVDisc0 uint64
+	MVDisc1 uint64
+	MVDisc2 uint64
+	MVDiscMaybe uint64
 
 	NonLeafsAt       [MaxDepthStats]uint64  // non-leafs by depth
 	FirstChildCutsAt [MaxDepthStats]uint64  // first-child cuts by depth

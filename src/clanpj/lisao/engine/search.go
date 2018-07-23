@@ -257,12 +257,12 @@ func isInCheckFast(board *dragon.Board) bool {
 //   3. Move does not discover check
 // It's ok to return a false negative (i.e. return false for a valid move), but we return true only
 //  if the move is definitely valid.
-func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
-	debug := false
-	if board.ToFen() == "rnbqkbnr/pppppppp/8/8/Q1P5/8/PP1PPPPP/RNB1KBNR b KQkq - 1 1" && ourMove.String() == "d7d6" {
-		fmt.Println("                   debuging isValidMoveFast")
-		debug = true
-	}
+func isValidMoveFast(board *dragon.Board, ourMove dragon.Move, stats *SearchStatsT) bool {
+	// debug := false
+	// if board.ToFen() == "rnbqkbnr/pppppppp/8/8/Q1P5/8/PP1PPPPP/RNB1KBNR b KQkq - 1 1" && ourMove.String() == "d7d6" {
+	// 	fmt.Println("                   debuging isValidMoveFast")
+	// 	debug = true
+	// }
 	
 	ourFrom := ourMove.From()
 	ourFromBit := uint64(1) << ourFrom
@@ -272,16 +272,22 @@ func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
 		yourAll, ourAll, ourKings = board.Black.All, board.White.All, board.White.Kings
 	}
 
+	stats.MVAll++
+
 	// If it's a king move then bail - too complicated to compute check after the move, castling through check, etc.
 	if (ourKings & ourFromBit) != 0 {
-		return false // TODO can we try harder?
+		return false // TODO can we try harder? In opening game not worth it, but end-game maybe.
 	}
+	
+	stats.MVNonKing++
 	
 	// Are we moving our own piece?
 	if (ourAll & ourFromBit) == 0 {
 		return false
 	}
 
+	stats.MVOurPiece++
+	
 	ourTo := ourMove.To()
 	ourToBit := uint64(1) << ourTo
 
@@ -294,18 +300,27 @@ func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
 
 	// Is this a valid move path for the piece - valid direction and not blocked
 	if ourPiece == dragon.Pawn {
+		stats.MVPawn++
 		ourPawnPushFlags, ourPawnCaptureFlags := blackPawnPushFlags, blackPawnCaptureFlags
 		if board.Wtomove {
 			ourPawnPushFlags, ourPawnCaptureFlags = whitePawnPushFlags, whitePawnCaptureFlags
 		}
 		// Pawns are special cos their direction has to match whether they are capturing or not.
-		// TODO - must do this better/properly with forward directions only for each colour
 		if ourDirFlag & ourPawnPushFlags != 0 {
+			stats.MVPawnPush++
 			// Pawn push - target square must be open
-			// TODO 2-square pawn push
-			if ourDirDist.dist != 1 || (bothAll & ourToBit) != 0 {
+			if ourDirDist.dist > 2 || (bothAll & ourToBit) != 0 {
 				return false
 			}
+			if ourDirDist.dist == 2 {
+				// Interim square must also be open
+				hopPos := (ourFrom+ourTo)/2
+				hopPosBit := uint64(1) << hopPos
+				if (bothAll & hopPosBit) != 0 {
+					return false
+				}
+			}
+			stats.MVPawnPushOk++
 		} else if ourDirFlag & ourPawnCaptureFlags != 0 {
 			// Capture - target square must be opposition piece
 			// TODO en-passant
@@ -316,7 +331,9 @@ func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
 			// Invalid pawn move
 			return false
 		}
+		stats.MVPawnOk++
 	} else {
+		stats.MVNonPawn++
 		// Non-pawn - is this a valid direction for the move type
 		if (PieceToDirFlags[ourPiece] & ourDirFlag) == 0 {
 			return false
@@ -327,47 +344,57 @@ func isValidMoveFast(board *dragon.Board, ourMove dragon.Move) bool {
 		}
 		// Is there another piece blocking the path - only need to check multi-square slider moves
 		if ourDirDist.dist != 1 {
-			if isSliderPathBlocked(ourFrom, ourDirDist.dir, ourDirDist.dist, bothAll, false) {
+			if isSliderPathBlocked(ourFrom, ourDirDist.dir, ourDirDist.dist, bothAll) {
 				return false
 			}
 		}
+		stats.MVNonPawnOk++
+
 	}
 
+	stats.MVDisc0++
+	
 	// If we get here then the move itself looks good, so check for discovered check
 
 	kingPos := uint8(bits.TrailingZeros64(ourKings))
 	kingDirDist := dirDist(kingPos, ourFrom)
 	kingDirFlag := dirFlag(kingDirDist.dir)
 
-	if debug {
-		fmt.Println("                   king pos", kingPos, "ourFrom", ourFrom, "king-dir", kingDirDist.dir, "king-dist", kingDirDist.dist)
-	}
+	// if debug {
+	// 	fmt.Println("                   king pos", kingPos, "ourFrom", ourFrom, "king-dir", kingDirDist.dir, "king-dist", kingDirDist.dist)
+	// }
 
 	// If king direction from piece starting position is not a slider direction
 	//   then there is no opportunity for discovered check
 	if kingDirFlag & queenDirFlags == 0 {
-		if debug {
-			fmt.Println("                   king dir not slider dir")
-		}
+		// if debug {
+		// 	fmt.Println("                   king dir not slider dir")
+		// }
 		return true
 	}
 
+	stats.MVDisc1++
+	
 	// If the move is towards or away from the king then there is no opportunity for discovered check,
 	//   because the piece itself is still blocking all possible discoveries.
 	if kingDirFlag & (ourDirFlag | dirFlag(oppositeDir[ourDirDist.dir])) != 0 {
-		if debug {
-			fmt.Println("                   piece moved along discovery ray")
-		}
+		// if debug {
+		// 	fmt.Println("                   piece moved along discovery ray")
+		// }
 		return true
 	}
 
+	stats.MVDisc2++
+	
 	// If there is another piece blocking the path to the king then we're good
-	if isSliderPathBlocked(kingPos, kingDirDist.dir, kingDirDist.dist, bothAll, debug) {
-		if debug {
-			fmt.Println("                   blocked king-side of moved piece")
-		}
+	if isSliderPathBlocked(kingPos, kingDirDist.dir, kingDirDist.dist, bothAll) {
+		// if debug {
+		// 	fmt.Println("                   blocked king-side of moved piece")
+		// }
 		return true
 	}
+
+	stats.MVDiscMaybe++
 
 	// TODO - ok, we are exposed to discovered check, but is there an opponent piece taking advantage?
 	// At the moment I don't have a good way to determine this other than brute force.

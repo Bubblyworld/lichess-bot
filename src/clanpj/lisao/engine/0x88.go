@@ -210,7 +210,7 @@ func dirDist(from uint8, to uint8) DirDistT {
 }
 
 // Excludes from and to squares
-func sliderPathMiddleBits(from uint8, dir DirT, dist uint8, debug bool) uint64 {
+func sliderPathMiddleBits(from uint8, dir DirT, dist uint8) uint64 {
 	basePath := dirDistPathBits[dir][dist-1]
 	base := pathBasePos[dir]
 
@@ -222,6 +222,6 @@ func sliderPathMiddleBits(from uint8, dir DirT, dist uint8, debug bool) uint64 {
 }
 
 // Blockers is typically all pieces of both sides
-func isSliderPathBlocked(from uint8, dir DirT, dist uint8, blockers uint64, debug bool) bool {
-	return (sliderPathMiddleBits(from, dir, dist, debug) & blockers) != 0
+func isSliderPathBlocked(from uint8, dir DirT, dist uint8, blockers uint64) bool {
+	return (sliderPathMiddleBits(from, dir, dist) & blockers) != 0
 }

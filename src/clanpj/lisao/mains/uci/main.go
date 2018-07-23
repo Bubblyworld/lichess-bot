@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0mga Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0ekm Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -509,6 +509,9 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 
 	// Reverse order from which it appears in the UCI driver
 	fmt.Println("info string   q-mates:", perC(stats.QMates, stats.QNonLeafs), "q-pat-cuts:", perC(stats.QPatCuts, stats.QNonLeafs), "q-rampage-prunes:", perC(stats.QRampagePrunes, stats.QNonLeafs), "q-killers:", perC(stats.QKillers, stats.QNonLeafs), "q-killer-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "q-deep-killers:", perC(stats.QDeepKillers, stats.QNonLeafs), "q-deep-killer-cuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
+	if engine.UseEarlyMoveHint {
+		fmt.Println("info string   mv-all:", stats.MVAll, "mv-non-king:", perC(stats.MVNonKing, stats.MVAll), "mv-ours:", perC(stats.MVOurPiece, stats.MVAll), "mv-pawn:", perC(stats.MVPawn, stats.MVAll), "mv-pawn-push:", perC(stats.MVPawnPush, stats.MVPawn), "mv-pp-ok:", perC(stats.MVPawnPushOk, stats.MVPawnPush), "mv-pawnok:", perC(stats.MVPawnOk, stats.MVPawn), "mv-nonpawn:", perC(stats.MVNonPawn, stats.MVAll), "mv-nonpawn-ok:", perC(stats.MVNonPawnOk, stats.MVNonPawn), "mv-disc0:", perC(stats.MVDisc0, stats.MVAll), "mv-disc1:", perC(stats.MVDisc1, stats.MVAll), "mv-disc2:", perC(stats.MVDisc2, stats.MVAll), "mv-disc-no:", perC(stats.MVDiscMaybe, stats.MVAll))
+	}
 	if engine.UseQSearchTT {
 		fmt.Println("info string   qtt-hits:", perC(stats.QttHits, stats.QNonLeafs), "qtt-depth-hits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-beta-cuts:", perC(stats.QttBetaCuts, stats.QNonLeafs), "qtt-alpha-cuts:", perC(stats.QttAlphaCuts, stats.QNonLeafs), "qtt-late-cuts:", perC(stats.QttLateCuts, stats.QNonLeafs), "qtt-true-evals:", perC(stats.QttTrueEvals, stats.QNonLeafs))
 	}
