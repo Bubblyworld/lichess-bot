@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0dh Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0mga Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -37,10 +37,12 @@ func uciLoop() {
 		case "uci":
 			fmt.Println("id name Lisao", VersionString)
 			fmt.Println("id author Clan PJ")
-			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var MiniMax var NegaMax var AlphaBeta var NegAlphaBeta")
+			fmt.Println("option name SearchAlgorithm type combo default", engine.SearchAlgorithmString(), "var NegAlphaBeta")
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name SearchCutoffPercent type spin default", engine.SearchCutoffPercent, "min 1 max 100")
 			fmt.Println("option name TimeLeftPerMoveDivisor type spin default", TimeLeftPerMoveDivisor, "min 2 max 200")
+			fmt.Println("option name UseEarlyMoveHint type check default", engine.UseEarlyMoveHint)
+			fmt.Println("option name HeurUseNullMove type check default", engine.HeurUseNullMove)
 			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
 			fmt.Println("option name UseIDMoveHint type check default", engine.UseIDMoveHint)
 			fmt.Println("option name MinIDMoveHintDepth type spin default", engine.MinIDMoveHintDepth, "min 2 max 1024")
@@ -80,12 +82,6 @@ func uciLoop() {
 			switch strings.ToLower(tokens[2]) {
 			case "searchalgorithm":
 				switch strings.ToLower(tokens[4]) {
-				case "minimax":
-					engine.SearchAlgorithm = engine.MiniMax
-				case "negamax":
-					engine.SearchAlgorithm = engine.NegaMax
-				case "alphabeta":
-					engine.SearchAlgorithm = engine.AlphaBeta
 				case "negalphabeta":
 					engine.SearchAlgorithm = engine.NegAlphaBeta
 				default:
@@ -120,6 +116,24 @@ func uciLoop() {
 					engine.UseMoveOrdering = false
 				default:
 					fmt.Println("info string Unrecognised UseMoveOrdering option:", tokens[4])
+				}
+			case "useearlymovehint":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.UseEarlyMoveHint = true
+				case "false":
+					engine.UseEarlyMoveHint = false
+				default:
+					fmt.Println("info string Unrecognised UseEarlyMoveHint option:", tokens[4])
+				}
+			case "heurusenullmove":
+				switch strings.ToLower(tokens[4]) {
+				case "true":
+					engine.HeurUseNullMove = true
+				case "false":
+					engine.HeurUseNullMove = false
+				default:
+					fmt.Println("info string Unrecognised HeurUseNullMove option:", tokens[4])
 				}
 			case "useidmovehint":
 				switch strings.ToLower(tokens[4]) {
@@ -338,7 +352,7 @@ func uciLoop() {
 				timeoutMs = movetime
 				if movetime == 0 {
 					var ourtime, opptime, ourinc, oppinc int
-					if board.Wtomove {
+					if board.Colortomove == dragon.White {
 						ourtime, opptime, ourinc, oppinc = wtime, btime, winc, binc
 					} else {
 						ourtime, opptime, ourinc, oppinc = btime, wtime, binc, winc
@@ -406,7 +420,7 @@ func uciLoop() {
 			if strings.ToLower(posScanner.Text()) == "startpos" {
 				board = dragon.ParseFen(dragon.Startpos)
 				ht.Add(board.Hash()) // record that this state has occurred
-				posScanner.Scan() // advance the scanner to leave it in a consistent state
+				posScanner.Scan()    // advance the scanner to leave it in a consistent state
 			} else if strings.ToLower(posScanner.Text()) == "fen" {
 				fenstr := ""
 				for posScanner.Scan() && strings.ToLower(posScanner.Text()) != "moves" {
@@ -471,13 +485,12 @@ var timeout uint32
 // Timer controlling the timeout variable
 var timeoutTimer *time.Timer
 
-
 // Lightweight wrapper around Lisao Search.
 // Prints the results (bestmove) and various stats.
 func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	// Reset the timeout
 	atomic.StoreUint32(&timeout, 0)
-	
+
 	// Time the search
 	start := time.Now()
 
@@ -490,7 +503,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	uciStop()
 
 	// Eval is expected from the engine's perspective, but we generate it from white's perspective
-	if !board.Wtomove {
+	if board.Colortomove == dragon.Black {
 		eval = -eval
 	}
 
@@ -505,7 +518,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	}
 	fmt.Println()
 	fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-all-nodes:", perC(stats.QAllChildrenNodes, stats.QNonLeafs), "q-1st-child-cuts:", perC(stats.QFirstChildCuts, stats.QNonLeafs), "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
-	fmt.Println("info string   mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	fmt.Println("info string   null-cuts:", perC(stats.NullMoveCuts, stats.NonLeafs), "valid-hint-moves:", perC(stats.ValidHintMoves, stats.NonLeafs), "hint-move-cuts:", perC(stats.HintMoveCuts, stats.NonLeafs), "mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
 	if engine.UseTT {
 		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-deeper-hits:", perC(stats.TTDeeperHits, stats.NonLeafs), "tt-beta-cuts:", perC(stats.TTBetaCuts, stats.NonLeafs), "tt-alpha-cuts:", perC(stats.TTAlphaCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
 	}
@@ -533,7 +546,7 @@ func uciStartTimer(timeoutMs int) {
 		return
 	}
 	// TODO - atomic!
-	timeoutTimer = time.AfterFunc(time.Duration(timeoutMs) * time.Millisecond, func() { uciStop() })
+	timeoutTimer = time.AfterFunc(time.Duration(timeoutMs)*time.Millisecond, func() { uciStop() })
 }
 
 // Explicitly stop the search by canceling the timer and setting the timeout shared memory address.
@@ -544,7 +557,7 @@ func uciStop() {
 		// TODO atomic!
 		timeoutTimer = nil
 	}
-		
+
 	// Notify search threads to bail
 	atomic.StoreUint32(&timeout, 1)
 }

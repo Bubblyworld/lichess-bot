@@ -175,7 +175,7 @@ var blackRookPosVals = [64]int8{
 var blackQueenPosVals = [64]int8{
 	6, 1, -8, -104, 69, 24, 88, 26,
 	14, 32, 60, -10, 20, 76, 57, 24,
-        -2, 43, 32, 60, 72, 63, 43, 2,
+	-2, 43, 32, 60, 72, 63, 43, 2,
 	1, -16, 22, 17, 25, 20, -13, -6,
 	-14, -15, -2, -5, -1, -10, -20, -22,
 	-30, -6, -13, -11, -16, -11, -16, -27,
@@ -216,7 +216,7 @@ var blackPiecePosVals = [7]*[64]int8{
 func NegaStaticEval(board *dragon.Board) EvalCp {
 	staticEval := StaticEval(board)
 
-	if board.Wtomove {
+	if board.Colortomove == dragon.White {
 		return staticEval
 	}
 	return -staticEval
@@ -224,15 +224,15 @@ func NegaStaticEval(board *dragon.Board) EvalCp {
 
 // Static eval only - no mate checks - from white's perspective
 func StaticEval(board *dragon.Board) EvalCp {
-	whitePiecesEval := piecesEval(&board.White)
-	blackPiecesEval := piecesEval(&board.Black)
+	whitePiecesEval := piecesEval(&board.Bbs[dragon.White])
+	blackPiecesEval := piecesEval(&board.Bbs[dragon.Black])
 
 	piecesEval := whitePiecesEval - blackPiecesEval
 
 	endGameRatio := EndGameRatio(whitePiecesEval + blackPiecesEval)
 
-	whitePiecesPosEval := piecesPosVal(&board.White, &whitePiecePosVals, &whiteKingEndgamePosVals, endGameRatio)
-	blackPiecesPosEval := piecesPosVal(&board.Black, &blackPiecePosVals, &blackKingEndgamePosVals, endGameRatio)
+	whitePiecesPosEval := piecesPosVal(&board.Bbs[dragon.White], &whitePiecePosVals, &whiteKingEndgamePosVals, endGameRatio)
+	blackPiecesPosEval := piecesPosVal(&board.Bbs[dragon.Black], &blackPiecePosVals, &blackKingEndgamePosVals, endGameRatio)
 
 	pawnExtrasEval := pawnExtrasVal(board)
 	kingProtectionEval := kingProtectionVal(board, endGameRatio)
@@ -244,11 +244,11 @@ func StaticEval(board *dragon.Board) EvalCp {
 
 // Sum of individual piece evals
 func piecesEval(bitboards *dragon.Bitboards) EvalCp {
-	eval := pawnVal * bits.OnesCount64(bitboards.Pawns)
-	eval += bishopVal * bits.OnesCount64(bitboards.Bishops)
-	eval += knightVal * bits.OnesCount64(bitboards.Knights)
-	eval += rookVal * bits.OnesCount64(bitboards.Rooks)
-	eval += queenVal * bits.OnesCount64(bitboards.Queens)
+	eval := pawnVal * bits.OnesCount64(bitboards[dragon.Pawn])
+	eval += bishopVal * bits.OnesCount64(bitboards[dragon.Bishop])
+	eval += knightVal * bits.OnesCount64(bitboards[dragon.Knight])
+	eval += rookVal * bits.OnesCount64(bitboards[dragon.Rook])
+	eval += queenVal * bits.OnesCount64(bitboards[dragon.Queen])
 
 	return EvalCp(eval)
 }
@@ -266,7 +266,7 @@ func EndGameRatio(bAndWPiecesVal EvalCp) float64 {
 	if NeverInEndgame {
 		return 0.0
 	}
-	
+
 	// Somewhat arbitrary
 	if bAndWPiecesVal > EndGamePiecesValHi {
 		return 0.0
@@ -282,14 +282,14 @@ func EndGameRatio(bAndWPiecesVal EvalCp) float64 {
 // Sum of piece position values
 //   endGameRatio is a number between 0.0 and 1.0 where 1.0 means we're in end-game
 func piecesPosVal(bitboards *dragon.Bitboards, piecePosVals *[7]*[64]int8, kingEndgamePosVals *[64]int8, endGameRatio float64) EvalCp {
-	eval := pieceTypePiecesPosVal(bitboards.Pawns, piecePosVals[dragon.Pawn])
-	eval += pieceTypePiecesPosVal(bitboards.Bishops, piecePosVals[dragon.Bishop])
-	eval += pieceTypePiecesPosVal(bitboards.Knights, piecePosVals[dragon.Knight])
-	eval += pieceTypePiecesPosVal(bitboards.Rooks, piecePosVals[dragon.Rook])
-	eval += pieceTypePiecesPosVal(bitboards.Queens, piecePosVals[dragon.Queen])
+	eval := pieceTypePiecesPosVal(bitboards[dragon.Pawn], piecePosVals[dragon.Pawn])
+	eval += pieceTypePiecesPosVal(bitboards[dragon.Bishop], piecePosVals[dragon.Bishop])
+	eval += pieceTypePiecesPosVal(bitboards[dragon.Knight], piecePosVals[dragon.Knight])
+	eval += pieceTypePiecesPosVal(bitboards[dragon.Rook], piecePosVals[dragon.Rook])
+	eval += pieceTypePiecesPosVal(bitboards[dragon.Queen], piecePosVals[dragon.Queen])
 
-	kingStartEval := pieceTypePiecesPosVal(bitboards.Kings, piecePosVals[dragon.King])
-	kingEndgameEval := pieceTypePiecesPosVal(bitboards.Kings, kingEndgamePosVals)
+	kingStartEval := pieceTypePiecesPosVal(bitboards[dragon.King], piecePosVals[dragon.King])
+	kingEndgameEval := pieceTypePiecesPosVal(bitboards[dragon.King], kingEndgamePosVals)
 
 	kingEval := (1.0-endGameRatio)*float64(kingStartEval) + endGameRatio*float64(kingEndgameEval)
 
@@ -323,7 +323,7 @@ const pp6 int8 = 37
 var whitePassedPawnPosVals = [64]int8{
 	0, 0, 0, 0, 0, 0, 0, 0,
 	pp2, pp2, pp2, pp2, pp2, pp2, pp2, pp2,
-	pp3, pp3, pp3, pp3, pp3, pp3, pp3, pp3, 
+	pp3, pp3, pp3, pp3, pp3, pp3, pp3, pp3,
 	pp4, pp4, pp4, pp4, pp4, pp4, pp4, pp4,
 	pp5, pp5, pp5, pp5, pp5, pp5, pp5, pp5,
 	pp6, pp6, pp6, pp6, pp6, pp6, pp6, pp6,
@@ -336,22 +336,23 @@ var blackPassedPawnPosVals = [64]int8{
 	pp6, pp6, pp6, pp6, pp6, pp6, pp6, pp6,
 	pp5, pp5, pp5, pp5, pp5, pp5, pp5, pp5,
 	pp4, pp4, pp4, pp4, pp4, pp4, pp4, pp4,
-	pp3, pp3, pp3, pp3, pp3, pp3, pp3, pp3, 
+	pp3, pp3, pp3, pp3, pp3, pp3, pp3, pp3,
 	pp2, pp2, pp2, pp2, pp2, pp2, pp2, pp2,
 	0, 0, 0, 0, 0, 0, 0, 0}
 
-
 // Bonus for pawns protecting pawns
 const pProtPawnVal = 10
+
 // Bonus for pawns protecting pieces
 const pProtPieceVal = 7
+
 // Penalty per doubled pawn
 const doubledPawnPenalty = -15
 
 // Pawn extras
 func pawnExtrasVal(board *dragon.Board) EvalCp {
-	wPawns := board.White.Pawns
-	bPawns := board.Black.Pawns
+	wPawns := board.Bbs[dragon.White][dragon.Pawn]
+	bPawns := board.Bbs[dragon.Black][dragon.Pawn]
 
 	// Passed pawns
 	wPawnScope := WPawnScope(wPawns)
@@ -366,38 +367,38 @@ func pawnExtrasVal(board *dragon.Board) EvalCp {
 	// Pawns protected by pawns
 	wPawnAtt := WPawnAttacks(wPawns)
 	wPawnsProtectedByPawns := wPawnAtt & wPawns
-	wPProtPawnsVal := bits.OnesCount64(wPawnsProtectedByPawns)*pProtPawnVal
+	wPProtPawnsVal := bits.OnesCount64(wPawnsProtectedByPawns) * pProtPawnVal
 
 	bPawnAtt := BPawnAttacks(bPawns)
 	bPawnsProtectedByPawns := bPawnAtt & bPawns
-	bPProtPawnsVal := bits.OnesCount64(bPawnsProtectedByPawns)*pProtPawnVal
+	bPProtPawnsVal := bits.OnesCount64(bPawnsProtectedByPawns) * pProtPawnVal
 
 	// Pieces protected by pawns
-	wPieces := board.White.All & ^wPawns
-	wPiecesProtectedByPawns := wPawnAtt & wPieces 
-	wPProtPiecesVal := bits.OnesCount64(wPiecesProtectedByPawns)*pProtPieceVal
+	wPieces := board.Bbs[dragon.White][dragon.All] & ^wPawns
+	wPiecesProtectedByPawns := wPawnAtt & wPieces
+	wPProtPiecesVal := bits.OnesCount64(wPiecesProtectedByPawns) * pProtPieceVal
 
-	bPieces := board.Black.All & ^bPawns
-	bPiecesProtectedByPawns := bPawnAtt & bPieces 
-	bPProtPiecesVal := bits.OnesCount64(bPiecesProtectedByPawns)*pProtPieceVal
+	bPieces := board.Bbs[dragon.Black][dragon.All] & ^bPawns
+	bPiecesProtectedByPawns := bPawnAtt & bPieces
+	bPProtPiecesVal := bits.OnesCount64(bPiecesProtectedByPawns) * pProtPieceVal
 
 	// Doubled pawns
 	wPawnTelestop := NFill(N(wPawns))
 	wDoubledPawns := wPawnTelestop & wPawns
-	wDoubledPawnVal := bits.OnesCount64(wDoubledPawns)*doubledPawnPenalty
+	wDoubledPawnVal := bits.OnesCount64(wDoubledPawns) * doubledPawnPenalty
 
 	bPawnTelestop := SFill(S(bPawns))
 	bDoubledPawns := bPawnTelestop & bPawns
-	bDoubledPawnVal := bits.OnesCount64(bDoubledPawns)*doubledPawnPenalty
+	bDoubledPawnVal := bits.OnesCount64(bDoubledPawns) * doubledPawnPenalty
 
-	
 	return (wPPVal - bPPVal) +
-		EvalCp(wPProtPawnsVal - bPProtPawnsVal) +
-		EvalCp(wPProtPiecesVal - bPProtPiecesVal) +
-		EvalCp(wDoubledPawnVal - bDoubledPawnVal)
+		EvalCp(wPProtPawnsVal-bPProtPawnsVal) +
+		EvalCp(wPProtPiecesVal-bPProtPiecesVal) +
+		EvalCp(wDoubledPawnVal-bDoubledPawnVal)
 }
 
 type KingProtectionT uint8
+
 const (
 	NoProtection KingProtectionT = iota
 	QSideProtection
@@ -405,7 +406,7 @@ const (
 )
 
 // Which white king positions qualify for protection eval - index 0 is square A1, index 63 is square H8
-var wKingProtectionTypes = [64]KingProtectionT {
+var wKingProtectionTypes = [64]KingProtectionT{
 	QSideProtection, QSideProtection, QSideProtection, NoProtection, NoProtection, NoProtection, KSideProtection, KSideProtection,
 	QSideProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, KSideProtection,
 	NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection,
@@ -416,13 +417,13 @@ var wKingProtectionTypes = [64]KingProtectionT {
 	NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection}
 
 // Bitboard locations of white king protecting pieces indexes by protection type
-var wKingProtectionBbs = [3]uint64 {
-	0x0, // NoProtection
+var wKingProtectionBbs = [3]uint64{
+	0x0,                // NoProtection
 	0x0007070000000000, // QSideProtection
 	0x00e0e00000000000} // KSideProtection
 
 // Which black king positions qualify for protection eval
-var bKingProtectionTypes = [64]KingProtectionT {
+var bKingProtectionTypes = [64]KingProtectionT{
 	NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection,
 	NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection,
 	NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection, NoProtection,
@@ -433,11 +434,10 @@ var bKingProtectionTypes = [64]KingProtectionT {
 	QSideProtection, QSideProtection, QSideProtection, NoProtection, NoProtection, NoProtection, KSideProtection, KSideProtection}
 
 // Bitboard locations of black king protecting pieces indexes by protection type
-var bKingProtectionBbs = [3]uint64 {
-	0x0, // NoProtection
+var bKingProtectionBbs = [3]uint64{
+	0x0,                // NoProtection
 	0x0000000000070700, // QSideProtection
 	0x0000000000e0e000} // KSideProtection
-
 
 // Bonus for pieces that are protecting the king
 const kingProtectorVal = 8
@@ -452,30 +452,30 @@ func kingProtectionVal(board *dragon.Board, endGameRatio float64) EvalCp {
 		return 0
 	}
 
-	wBbs := board.White
-	wKingPos := bits.TrailingZeros64(wBbs.Kings)
+	wBbs := &board.Bbs[dragon.White]
+	wKingPos := bits.TrailingZeros64(wBbs[dragon.King])
 	wKingProtectionType := wKingProtectionTypes[wKingPos]
 	wKingProtectionBb := wKingProtectionBbs[wKingProtectionType]
 
-	wNonKingPieces := wBbs.All & ^wBbs.Kings
+	wNonKingPieces := wBbs[dragon.All] & ^wBbs[dragon.King]
 	wKingProtectors := wNonKingPieces & wKingProtectionBb
 
-	wKingPawnProtectors := wBbs.Pawns & wKingProtectionBb
+	wKingPawnProtectors := wBbs[dragon.Pawn] & wKingProtectionBb
 
 	wKingProtectionVal := bits.OnesCount64(wKingProtectors)*kingProtectorVal + bits.OnesCount64(wKingPawnProtectors)*kingPawnProtectorVal
 
-	bBbs := board.Black
-	bKingPos := bits.TrailingZeros64(bBbs.Kings)
+	bBbs := &board.Bbs[dragon.Black]
+	bKingPos := bits.TrailingZeros64(bBbs[dragon.King])
 	bKingProtectionType := bKingProtectionTypes[bKingPos]
 	bKingProtectionBb := bKingProtectionBbs[bKingProtectionType]
 
-	bNonKingPieces := bBbs.All & ^bBbs.Kings
+	bNonKingPieces := bBbs[dragon.All] & ^bBbs[dragon.King]
 	bKingProtectors := bNonKingPieces & bKingProtectionBb
 
-	bKingPawnProtectors := bBbs.Pawns & bKingProtectionBb
+	bKingPawnProtectors := bBbs[dragon.Pawn] & bKingProtectionBb
 
 	bKingProtectionVal := bits.OnesCount64(bKingProtectors)*kingProtectorVal + bits.OnesCount64(bKingPawnProtectors)*kingPawnProtectorVal
 
 	// King protection in end-game is irrelevant
-	return EvalCp(float64(wKingProtectionVal - bKingProtectionVal) * (1.0 - endGameRatio))
+	return EvalCp(float64(wKingProtectionVal-bKingProtectionVal) * (1.0 - endGameRatio))
 }
