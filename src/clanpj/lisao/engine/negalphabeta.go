@@ -268,7 +268,17 @@ done:
 					eval = NegaStaticEval(s.board)
 				}
 			} else {
-				childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false)
+				// Null window probe - don't bother if we're already in a null window or on the PV
+				if i == 0 || beta <= alpha+1 {
+					eval = -alpha-1
+				} else {
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false)
+				}
+				
+				if -beta <= eval && eval < -alpha {
+					// Full search
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false)
+				}
 			}
 			eval = -eval // back to our perspective
 
