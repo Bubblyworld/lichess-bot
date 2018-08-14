@@ -316,8 +316,10 @@ func StaticEvalOrderN(board *dragon.Board) EvalCp {
 
 	pawnExtrasEval := pawnExtrasVal(board)
 	kingProtectionEval := kingProtectionVal(board, endGameRatio)
+	bishopPairEval := bishopPairVal(board)
+	endgameEval := endgameVal(board)
 
-	orderNEval := pawnExtrasEval + kingProtectionEval
+	orderNEval := pawnExtrasEval + kingProtectionEval + bishopPairEval + endgameEval
 
 	// Clamp it to the absolute bounds
 	if orderNEval > MaxAbsStaticEvalOrderN {
@@ -586,4 +588,149 @@ func kingProtectionVal(board *dragon.Board, endGameRatio float64) EvalCp {
 
 	// King protection in end-game is irrelevant
 	return EvalCp(float64(wKingProtectionVal-bKingProtectionVal) * (1.0 - endGameRatio))
+}
+
+// Bishop pair bonuses
+// From White's perspective
+func bishopPairVal(board *dragon.Board) EvalCp {
+	return bishopPairColorVal(&board.Bbs[dragon.White]) - bishopPairColorVal(&board.Bbs[dragon.Black])
+}
+
+const blackSquares = uint64(0x5555555555555555)
+const whiteSquares = uint64(0xaaaaaaaaaaaaaaaa)
+const bishopPairBonus = EvalCp(80)
+const bishopPairDistancePenalty = EvalCp(3)
+
+func bishopPairColorVal(bitboards *dragon.Bitboards) EvalCp {
+	eval := EvalCp(0)
+	bishops := bitboards[dragon.Bishop]
+	blackBishops := bishops & blackSquares
+	whiteBishops := bishops & whiteSquares
+	if blackBishops != 0 && whiteBishops != 0 {
+		eval += bishopPairBonus
+
+		// Prefer Bishops to hunt close together (wildly speculative but it looks pretty).
+		// We assume there's only one bishop of each colour - but really if you are going to under-promote to a bishop you deserve a bogus eval.
+		bBishopPos := bits.TrailingZeros64(blackBishops)
+		wBishopPos := bits.TrailingZeros64(whiteBishops)
+
+		eval -= bishopPairDistancePenalty*EvalCp(kingWalkDistance(bBishopPos, wBishopPos))
+	}
+
+	return eval
+}
+
+// Return the rank and file of a position
+func rankFile(pos int) (int, int) {
+	return (pos >> 3), (pos & 7)
+}
+
+// King-walk distance - I can't remember what the formal term is - basically max(delta(x), delta(y))
+func kingWalkDistance(pos1 int, pos2 int) uint8 {
+	pos1Rank, pos1File := rankFile(pos1)
+	pos2Rank, pos2File := rankFile(pos2)
+
+	rankDiff8 := absDiff8[pos1Rank][pos2Rank]
+	fileDiff8 := absDiff8[pos1File][pos2File]
+
+	return max8[rankDiff8][fileDiff8]
+}
+
+// Absolute difference between two numbers in range [0,7]
+var absDiff8 = [8][8]uint8{
+	{0, 1, 2, 3, 4, 5, 6, 7}, // [0][n]
+	{1, 0, 1, 2, 3, 4, 5, 6}, // [1][n]
+	{2, 1, 0, 1, 2, 3, 4, 5}, // [2][n]
+	{3, 2, 1, 0, 1, 2, 3, 4}, // [3][n]
+	{4, 3, 2, 1, 0, 1, 2, 3}, // [4][n]
+	{5, 4, 3, 2, 1, 0, 1, 2}, // [5][n]
+	{6, 5, 4, 3, 2, 1, 0, 1}, // [6][n]
+	{7, 6, 5, 4, 3, 2, 1, 0}} // [7][n]
+
+// Max of two numbers in range [0,7]
+var max8 = [8][8]uint8{
+	{0, 1, 2, 3, 4, 5, 6, 7}, // [0][n]
+	{1, 1, 2, 3, 4, 5, 6, 7}, // [1][n]
+	{2, 2, 2, 3, 4, 5, 6, 7}, // [2][n]
+	{3, 3, 3, 3, 4, 5, 6, 7}, // [3][n]
+	{4, 4, 4, 4, 4, 5, 6, 7}, // [4][n]
+	{5, 5, 5, 5, 5, 5, 6, 7}, // [5][n]
+	{6, 6, 6, 6, 6, 6, 6, 7}, // [6][n]
+	{7, 7, 7, 7, 7, 7, 7, 7}} // [7][n]
+
+// End-game bonuses/penalties from White's perspective
+func endgameVal(board *dragon.Board) EvalCp {
+	return endgameColorVal(board, dragon.White) - endgameColorVal(board, dragon.Black)
+}
+
+func oppColor(color dragon.ColorT) dragon.ColorT {
+	return dragon.Black ^ color
+}
+
+const endgameKingPawnDistPenalty = -EvalCp(13)
+const loneMinorPiecePenalty = -EvalCp(240)
+const endgameKingMajorDistPenalty = -EvalCp(17)
+
+// TODO (rpj) I'm a bit concerned that these various eval categories will lead to sudden changes in the eval.
+func endgameColorVal(board *dragon.Board, color dragon.ColorT) EvalCp {
+	myBbs := board.Bbs[color]
+	oppBbs := board.Bbs[oppColor(color)]
+
+	myPawns := myBbs[dragon.Pawn]
+	myKings := myBbs[dragon.King]
+	myAll := myBbs[dragon.All]
+
+	myPieces := myAll & ^(myPawns | myKings)
+
+	// Case 1 - only pawns: we want to get the king next to a pawn to optimise promo potential
+	if myPieces == 0 && myPawns != 0 {
+		var fwdPawnPos int // the most advanced pawn
+		if color == dragon.White {
+			fwdPawnPos = 63 - bits.LeadingZeros64(myPawns)
+		} else {
+			fwdPawnPos = bits.TrailingZeros64(myPawns)
+		}
+		kingPos := bits.TrailingZeros64(myKings)
+
+		return endgameKingPawnDistPenalty * EvalCp(kingWalkDistance(fwdPawnPos, kingPos))
+	}
+
+	// Case 2 - no pawns: we want to get the king near a rook or queen and shrink the opponent's king box
+	if myPieces != 0 && myPawns == 0 {
+		myMajors := myBbs[dragon.Rook] | myBbs[dragon.Queen]
+		if myMajors == 0 {
+			// Bummer dude, only minor pieces.
+			// If there's only one, then penalise the eval - even a pawn gives more hope.
+			myMinors := myBbs[dragon.Bishop] | myBbs[dragon.Knight]
+			nMinors := bits.OnesCount64(myMinors)
+			if nMinors == 1 {
+				return loneMinorPiecePenalty
+			}
+			// TODO(rpj) How do we encourage minor piece checkmate?
+		} else {
+			// Encourage rook-style box shrinking mate by rewarding a small opponent king box,
+			//   and king proximity to the major piece.
+			majorPos := bits.TrailingZeros64(myMajors)
+			kingPos := bits.TrailingZeros64(myKings)
+			kingMajorDistPenalty := endgameKingMajorDistPenalty * EvalCp(kingWalkDistance(majorPos, kingPos))
+
+			// Caculate opposition king square size
+			majorRank, majorFile := rankFile(majorPos)
+
+			oppKingPos := bits.TrailingZeros64(oppBbs[dragon.King])
+			oppKingRank, oppKingFile := rankFile(oppKingPos)
+
+			kingBoxNRanks := majorRank
+			if majorRank < oppKingRank {
+				kingBoxNRanks = 7-majorRank
+			}
+			kingBoxNFiles := majorFile
+			if majorFile < oppKingFile {
+				kingBoxNFiles = 7-majorFile
+			}
+
+			return kingMajorDistPenalty - EvalCp(kingBoxNRanks*kingBoxNFiles) // smaller box is better
+		}
+	}
+	return EvalCp(0)
 }
