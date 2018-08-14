@@ -485,7 +485,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	start := time.Now()
 
 	// Search for the winning move!
-	bestMove, eval, stats, finalDepth, _ := engine.Search(board, ht, depth, timeoutMs, &timeout)
+	bestMove, eval, stats, finalDepth, pvLine, _ := engine.Search(board, ht, depth, timeoutMs, &timeout)
 
 	elapsedSecs := time.Since(start).Seconds()
 
@@ -498,33 +498,35 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	}
 
 	// Reverse order from which it appears in the UCI driver
-	fmt.Println("info string   q-mates:", perC(stats.QMates, stats.QNonLeafs), "q-pat-cuts:", perC(stats.QPatCuts, stats.QNonLeafs), "q-rampage-prunes:", perC(stats.QRampagePrunes, stats.QNonLeafs), "q-killers:", perC(stats.QKillers, stats.QNonLeafs), "q-killer-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "q-deep-killers:", perC(stats.QDeepKillers, stats.QNonLeafs), "q-deep-killer-cuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
-	if engine.UseQSearchTT {
-		fmt.Println("info string   qtt-hits:", perC(stats.QttHits, stats.QNonLeafs), "qtt-depth-hits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-beta-cuts:", perC(stats.QttBetaCuts, stats.QNonLeafs), "qtt-alpha-cuts:", perC(stats.QttAlphaCuts, stats.QNonLeafs), "qtt-late-cuts:", perC(stats.QttLateCuts, stats.QNonLeafs), "qtt-true-evals:", perC(stats.QttTrueEvals, stats.QNonLeafs))
+	if false {
+		fmt.Println("info string   q-mates:", perC(stats.QMates, stats.QNonLeafs), "q-pat-cuts:", perC(stats.QPatCuts, stats.QNonLeafs), "q-rampage-prunes:", perC(stats.QRampagePrunes, stats.QNonLeafs), "q-killers:", perC(stats.QKillers, stats.QNonLeafs), "q-killer-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "q-deep-killers:", perC(stats.QDeepKillers, stats.QNonLeafs), "q-deep-killer-cuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
+		if engine.UseQSearchTT {
+			fmt.Println("info string   qtt-hits:", perC(stats.QttHits, stats.QNonLeafs), "qtt-depth-hits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-beta-cuts:", perC(stats.QttBetaCuts, stats.QNonLeafs), "qtt-alpha-cuts:", perC(stats.QttAlphaCuts, stats.QNonLeafs), "qtt-late-cuts:", perC(stats.QttLateCuts, stats.QNonLeafs), "qtt-true-evals:", perC(stats.QttTrueEvals, stats.QNonLeafs))
+		}
+		fmt.Print("info string    q-non-leafs by depth:")
+		for i := 0; i < engine.MaxQDepthStats && i < engine.QSearchDepth; i++ {
+			fmt.Printf(" %d: %s", i, perC(stats.QNonLeafsAt[i], stats.QNonLeafs))
+		}
+		fmt.Println()
+		fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-all-nodes:", perC(stats.QAllChildrenNodes, stats.QNonLeafs), "q-1st-child-cuts:", perC(stats.QFirstChildCuts, stats.QNonLeafs), "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
+		fmt.Println("info string   null-cuts:", perC(stats.NullMoveCuts, stats.NonLeafs), "valid-hint-moves:", perC(stats.ValidHintMoves, stats.NonLeafs), "hint-move-cuts:", perC(stats.HintMoveCuts, stats.NonLeafs), "mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+		if engine.UseTT {
+			fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-deeper-hits:", perC(stats.TTDeeperHits, stats.NonLeafs), "tt-beta-cuts:", perC(stats.TTBetaCuts, stats.NonLeafs), "tt-alpha-cuts:", perC(stats.TTAlphaCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
+		}
+		fmt.Print("info string    1st-child-cuts by depth:")
+		for i := 0; i < engine.MaxDepthStats && i < finalDepth; i++ {
+			fmt.Printf(" %d: %s", i, perC(stats.FirstChildCutsAt[i], stats.NonLeafsAt[i]))
+		}
+		fmt.Println()
+		fmt.Print("info string    non-leafs by depth:")
+		for i := 0; i < engine.MaxDepthStats && i < finalDepth; i++ {
+			fmt.Printf(" %d: %s", i, perC(stats.NonLeafsAt[i], stats.NonLeafs))
+		}
+		fmt.Println()
+		fmt.Println("info string nodes:", stats.Nodes, "non-leafs:", stats.NonLeafs, "all-nodes:", perC(stats.AllChildrenNodes, stats.NonLeafs), "1st-child-cuts:", perC(stats.FirstChildCuts, stats.NonLeafs), "pos-repetitions:", perC(stats.PosRepetitions, stats.Nodes))
 	}
-	fmt.Print("info string    q-non-leafs by depth:")
-	for i := 0; i < engine.MaxQDepthStats && i < engine.QSearchDepth; i++ {
-		fmt.Printf(" %d: %s", i, perC(stats.QNonLeafsAt[i], stats.QNonLeafs))
-	}
-	fmt.Println()
-	fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-all-nodes:", perC(stats.QAllChildrenNodes, stats.QNonLeafs), "q-1st-child-cuts:", perC(stats.QFirstChildCuts, stats.QNonLeafs), "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
-	fmt.Println("info string   null-cuts:", perC(stats.NullMoveCuts, stats.NonLeafs), "valid-hint-moves:", perC(stats.ValidHintMoves, stats.NonLeafs), "hint-move-cuts:", perC(stats.HintMoveCuts, stats.NonLeafs), "mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
-	if engine.UseTT {
-		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-deeper-hits:", perC(stats.TTDeeperHits, stats.NonLeafs), "tt-beta-cuts:", perC(stats.TTBetaCuts, stats.NonLeafs), "tt-alpha-cuts:", perC(stats.TTAlphaCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
-	}
-	fmt.Print("info string    1st-child-cuts by depth:")
-	for i := 0; i < engine.MaxDepthStats && i < finalDepth; i++ {
-		fmt.Printf(" %d: %s", i, perC(stats.FirstChildCutsAt[i], stats.NonLeafsAt[i]))
-	}
-	fmt.Println()
-	fmt.Print("info string    non-leafs by depth:")
-	for i := 0; i < engine.MaxDepthStats && i < finalDepth; i++ {
-		fmt.Printf(" %d: %s", i, perC(stats.NonLeafsAt[i], stats.NonLeafs))
-	}
-	fmt.Println()
-	fmt.Println("info string nodes:", stats.Nodes, "non-leafs:", stats.NonLeafs, "all-nodes:", perC(stats.AllChildrenNodes, stats.NonLeafs), "1st-child-cuts:", perC(stats.FirstChildCuts, stats.NonLeafs), "pos-repetitions:", perC(stats.PosRepetitions, stats.Nodes))
 	// TODO proper checkmate score string
-	fmt.Println("info depth", finalDepth, "score cp", eval, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", &bestMove)
+	fmt.Println("info depth", finalDepth, "score cp", eval, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", engine.MkPvString(bestMove, pvLine))
 
 	// Print the result
 	fmt.Println("bestmove", &bestMove)
