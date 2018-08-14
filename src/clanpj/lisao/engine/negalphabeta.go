@@ -1,13 +1,24 @@
 package engine
 
 import (
+	"fmt"
 	"math/bits"
+	"os"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, parentNullMove bool) (dragon.Move, EvalCp) {
+func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, parentNullMove bool, eval0 EvalCp) (dragon.Move, EvalCp) {
+
+	// Sanity check the eval0
+	if false {
+		eval0Check := NegaStaticEvalOrder0(s.board)
+		if eval0 != eval0Check {
+			fmt.Println("               eval0", eval0, "eval0Check", eval0Check, "fen", s.board.ToFen())
+			os.Exit(1)
+		}
+	}
 
 	// Bail if we've timed out
 	if isTimedOut(s.timeout) {
@@ -105,6 +116,8 @@ done:
 				// Add to the move history
 				repetitions := s.ht.Add(s.board.Hash())
 
+				childEval0 := NegaStaticEvalOrder0Fast(s.board, -eval0, &boardSave)
+				
 				// Get the (deep) eval
 				var eval EvalCp
 				// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
@@ -114,14 +127,10 @@ done:
 					eval = DrawEval
 				} else if depthToGo <= 1 {
 					s.stats.Nodes++
-					if UseQSearch {
-						// Quiesce
-						childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller)
-					} else {
-						eval = NegaStaticEval(s.board)
-					}
+					// Quiesce
+					childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller, childEval0)
 				} else {
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0)
 				}
 				eval = -eval // back to our perspective
 
@@ -180,7 +189,7 @@ done:
 				// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
 				if nNonPawns >= 6 {
 					unapply := s.board.ApplyNullMove()
-					_, nullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/ /*parentNullMove*/, true)
+					_, nullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/ /*parentNullMove*/, true, -eval0)
 					nullMoveEval = -nullMoveEval // back to our perspective
 					unapply()
 
@@ -231,7 +240,7 @@ done:
 					// We go 2 plies shallower since our eval is unstable between odd/even plies.
 					// The result is effectively the (possibly new) ttMove.
 					// TODO - weaken the beta bound (and alpha?) a bit?
-					ttMove, _ = s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, idKiller, false)
+					ttMove, _ = s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, idKiller, false, eval0)
 
 				}
 				orderMoves(s.board, legalMoves, ttMove, killerMove, deepKiller, &s.stats.Killers, &s.stats.DeepKillers)
@@ -251,7 +260,9 @@ done:
 			s.board.MakeMove(move, &boardSave)
 			// Add to the move history
 			repetitions := s.ht.Add(s.board.Hash())
-
+			
+			childEval0 := NegaStaticEvalOrder0Fast(s.board, -eval0, &boardSave)
+			
 			// Get the (deep) eval
 			var eval EvalCp
 			// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
@@ -261,23 +272,19 @@ done:
 				eval = DrawEval
 			} else if depthToGo <= 1 {
 				s.stats.Nodes++
-				if UseQSearch {
-					// Quiesce
-					childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller)
-				} else {
-					eval = NegaStaticEval(s.board)
-				}
+				// Quiesce
+				childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller, childEval0)
 			} else {
 				// Null window probe - don't bother if we're already in a null window or on the PV
 				if i == 0 || beta <= alpha+1 {
 					eval = -alpha-1
 				} else {
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, childEval0)
 				}
 				
 				if -beta <= eval && eval < -alpha {
 					// Full search
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0)
 				}
 			}
 			eval = -eval // back to our perspective

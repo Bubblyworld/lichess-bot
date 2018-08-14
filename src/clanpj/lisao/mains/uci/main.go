@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0pv Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0keg2 Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -51,7 +51,6 @@ func uciLoop() {
 			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UsePosRepetition type check default", engine.UsePosRepetition)
 			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
-			fmt.Println("option name UseQSearch type check default", engine.UseQSearch)
 			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseQSearchTT type check default", engine.UseQSearchTT)
 			fmt.Println("option name UseQSearchMoveOrdering type check default", engine.UseQSearchMoveOrdering)
@@ -195,15 +194,6 @@ func uciLoop() {
 					engine.UseDeepKillerMoves = false
 				default:
 					fmt.Println("info string Unrecognised UseDeepKillerMoves option:", tokens[4])
-				}
-			case "useqsearch":
-				switch strings.ToLower(tokens[4]) {
-				case "true":
-					engine.UseQSearch = true
-				case "false":
-					engine.UseQSearch = false
-				default:
-					fmt.Println("info string Unrecognised UseQSearch option:", tokens[4])
 				}
 			case "qsearchdepth":
 				res, err := strconv.Atoi(tokens[4])

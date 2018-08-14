@@ -212,6 +212,10 @@ var blackPiecePosVals = [7]*[64]int8{
 	&blackQueenPosVals,
 	&blackKingPosVals}
 
+var colorPiecePosVals = [2]*[7]*[64]int8{
+	&whitePiecePosVals,
+	&blackPiecePosVals}
+
 // Static eval only - no mate checks - from the perspective of the player to move
 func NegaStaticEval(board *dragon.Board) EvalCp {
 	staticEval := StaticEval(board)
@@ -222,24 +226,108 @@ func NegaStaticEval(board *dragon.Board) EvalCp {
 	return -staticEval
 }
 
+// Static eval only - no mate checks - from the perspective of the player to move
+// Using precomputed O(0) component.
+func NegaStaticEvalFast(board *dragon.Board, negaEval0 EvalCp) EvalCp {
+	staticEvalOrderN := StaticEvalOrderN(board)
+
+	if board.Colortomove != dragon.White {
+		staticEvalOrderN = -staticEvalOrderN
+	}
+	
+	return negaEval0 + staticEvalOrderN
+}
+
 // Static eval only - no mate checks - from white's perspective
 func StaticEval(board *dragon.Board) EvalCp {
+	return StaticEvalOrder0(board) + StaticEvalOrderN(board)
+}
+
+// Cheap part of static eval by opportunistic delta eval.
+// Doing the easy case first and falling back to full eval until someone's more keen
+func NegaStaticEvalOrder0Fast(board *dragon.Board, prevEval0 EvalCp, moveInfo *dragon.BoardSaveT) EvalCp {
+	// If the moving piece is a king, or we have captured a non-pawn, then just do full eval0.
+	// King move includes castling which is extra tricky.
+	// (This should be a small minority of moves)
+	if moveInfo.FromPiece == dragon.King || endGameRatioChangesWithCapturePiece(moveInfo.CapturePiece) {
+		// Full re-eval
+		return NegaStaticEvalOrder0(board)
+	} else {
+		// Delta eval
+		return prevEval0 + negaDeltaEvalOrder0(board, moveInfo)
+	}
+}
+
+// O(0) eval delta from the given move - from the perspective of the player to move
+// Doesn't handle all cases = see NegaStaticEvalOrder0Fast(...)
+func negaDeltaEvalOrder0(board *dragon.Board, moveInfo *dragon.BoardSaveT) EvalCp {
+	// This is after the move, so inverted from what you might expect
+	captureColor := board.Colortomove
+	fromToColor := dragon.Black ^ captureColor // TODO export this from dragontoothmg
+	
+	fromDelta := pieceMoveDelta(moveInfo.FromPiece, moveInfo.FromLoc, fromToColor)
+	toDelta := pieceMoveDelta(moveInfo.ToPiece, moveInfo.ToLoc, fromToColor)
+	captureDelta := pieceMoveDelta(moveInfo.CapturePiece, moveInfo.CaptureLoc, captureColor)
+		
+	// The player to move is the opposite of the player who last moved, so this is inverted from what you might expect
+	return fromDelta - toDelta - captureDelta
+}
+
+func pieceMoveDelta(piece dragon.Piece, loc uint8, color dragon.ColorT) EvalCp {
+	return pieceVals[piece] + EvalCp(colorPiecePosVals[color][piece][loc])
+	
+}
+
+// Cheap part  - O(0) by delta eval - of static eval from the perspective of the player to move
+func NegaStaticEvalOrder0(board *dragon.Board) EvalCp {
+	staticEval0 := StaticEvalOrder0(board)
+
+	if board.Colortomove == dragon.White {
+		return staticEval0
+	}
+	return -staticEval0
+}
+	
+// Cheap part  - O(0) by delta eval - of static eval from white's perspective.
+// This is full evaluation - we prefer to do much cheaper delta evaluation.
+func StaticEvalOrder0(board *dragon.Board) EvalCp {
 	whitePiecesEval := piecesEval(&board.Bbs[dragon.White])
 	blackPiecesEval := piecesEval(&board.Bbs[dragon.Black])
 
 	piecesEval := whitePiecesEval - blackPiecesEval
 
-	endGameRatio := EndGameRatio(whitePiecesEval + blackPiecesEval)
+	endGameRatio := endGameRatioByPiecesCount(board)
 
 	whitePiecesPosEval := piecesPosVal(&board.Bbs[dragon.White], &whitePiecePosVals, &whiteKingEndgamePosVals, endGameRatio)
 	blackPiecesPosEval := piecesPosVal(&board.Bbs[dragon.Black], &blackPiecePosVals, &blackKingEndgamePosVals, endGameRatio)
 
+	piecesPosEval := whitePiecesPosEval - blackPiecesPosEval
+
+	return piecesEval + piecesPosEval
+}
+
+// Absolute bound on expensive eval - so we can do cheap futility pruning on the (cheaper) O(0) eval
+// TODO - work out what sensible clamp bounds are.
+const MaxAbsStaticEvalOrderN = EvalCp(500)
+
+// Expensive part - O(n) even with delta eval - of static eval from white's perspective.
+func StaticEvalOrderN(board *dragon.Board) EvalCp {
+	endGameRatio := endGameRatioByPiecesCount(board)
+
 	pawnExtrasEval := pawnExtrasVal(board)
 	kingProtectionEval := kingProtectionVal(board, endGameRatio)
 
-	piecesPosEval := whitePiecesPosEval - blackPiecesPosEval + pawnExtrasEval + kingProtectionEval
+	orderNEval := pawnExtrasEval + kingProtectionEval
 
-	return piecesEval + piecesPosEval
+	// Clamp it to the absolute bounds
+	if orderNEval > MaxAbsStaticEvalOrderN {
+		orderNEval = MaxAbsStaticEvalOrderN
+	}
+	if orderNEval < -MaxAbsStaticEvalOrderN {
+		orderNEval = -MaxAbsStaticEvalOrderN
+	}
+
+	return orderNEval
 }
 
 // Sum of individual piece evals
@@ -253,31 +341,51 @@ func piecesEval(bitboards *dragon.Bitboards) EvalCp {
 	return EvalCp(eval)
 }
 
-// Transition smoothly from King starting pos table to king end-game table between these total piece values.
-// Note these are totals of black and white pieces.
-const EndGamePiecesValHi EvalCp = 6000
-const EndGamePiecesValLo EvalCp = 2400
+// Return true iff the given capture piece can possibly affect the end-game ratio
+func endGameRatioChangesWithCapturePiece(capturePiece dragon.Piece) bool {
+	return capturePiece != dragon.Nothing && capturePiece != dragon.Pawn
+}
 
-// TODO delta eval doesn't cope with end-game-aware king eval
-const NeverInEndgame = true
+func nonPawnsCount(board *dragon.Board) int {
+	allBW := board.Bbs[dragon.White][dragon.All] | board.Bbs[dragon.Black][dragon.All]
+	pawnsBW := board.Bbs[dragon.White][dragon.Pawn] | board.Bbs[dragon.Black][dragon.Pawn]
+	// Includes kings
+	nonPawnsBW := allBW & ^pawnsBW
 
-// To what extent are we in end game; from 0.0 (not at all) to 1.0 (definitely)
-func EndGameRatio(bAndWPiecesVal EvalCp) float64 {
-	if NeverInEndgame {
+	return bits.OnesCount64(nonPawnsBW)
+}
+
+// Transition smoothly from King starting pos table to king end-game table between these total piece counts.
+// Note these are counts of black plus white pieces excluding pawns and including kings.
+const EndGamePiecesCountHi = 8
+const EndGamePiecesCountLo = 4
+
+func endGameRatioForCount(count int) float64 {
+	if count > EndGamePiecesCountHi {
 		return 0.0
 	}
 
-	// Somewhat arbitrary
-	if bAndWPiecesVal > EndGamePiecesValHi {
-		return 0.0
-	}
-
-	if bAndWPiecesVal < EndGamePiecesValLo {
+	if count < EndGamePiecesCountLo {
 		return 1.0
 	}
 
-	return float64(EndGamePiecesValHi-bAndWPiecesVal) / float64(EndGamePiecesValHi-EndGamePiecesValLo)
+	return float64(EndGamePiecesCountHi-count) / float64(EndGamePiecesCountHi-EndGamePiecesCountLo)
 }
+
+// To what extent are we in end game; from 0.0 (not at all) to 1.0 (definitely)
+func endGameRatioByPiecesCount(board *dragon.Board) float64 {
+	count := nonPawnsCount(board)
+	return endGameRatioForCount(count)
+}
+
+// Return the endgame ratio's before and after the last capture move, presuming the last capture
+//   was a non-pawn, i.e. non-pawn pieces count has decreased by 1
+func endGameRatioByPiecesCountBeforeAndAfterCapture(board *dragon.Board) (float64, float64) {
+	countAfter := nonPawnsCount(board)
+	countBefore := countAfter - 1
+	return endGameRatioForCount(countBefore), endGameRatioForCount(countAfter)
+}
+
 
 // Sum of piece position values
 //   endGameRatio is a number between 0.0 and 1.0 where 1.0 means we're in end-game

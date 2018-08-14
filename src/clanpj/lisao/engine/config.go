@@ -25,7 +25,6 @@ var UseDeepKillerMoves = true // only valid if UseKillerMoves == true
 var UseTT = true
 var HeurUseTTDeeperHits = true // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
-var UseQSearch = true
 var QSearchDepth = 12
 var UseQSearchTT = true
 var UseQSearchMoveOrdering = true

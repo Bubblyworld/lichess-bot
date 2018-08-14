@@ -1,6 +1,11 @@
 package engine
 
-import dragon "github.com/Bubblyworld/dragontoothmg"
+import (
+	"fmt"
+	"os"
+
+	dragon "github.com/Bubblyworld/dragontoothmg"
+)
 
 // Quiescence search - differs from full search as follows:
 //   - we only look at captures, promotions and check evasion - we could/should also possibly look at checks, but check detection is currently expensive
@@ -8,8 +13,17 @@ import dragon "github.com/Bubblyworld/dragontoothmg"
 // Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
 // TODO - include moving away from attacks too?
-func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move) (dragon.Move, EvalCp, bool) {
+func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp) (dragon.Move, EvalCp, bool) {
 
+	// Sanity check the eval0
+	if false {
+		eval0Check := NegaStaticEvalOrder0(s.board)
+		if eval0 != eval0Check {
+			fmt.Println("               eval0", eval0, "eval0Check", eval0Check, "fen", s.board.ToFen())
+			os.Exit(1)
+		}
+	}
+	
 	s.stats.QNodes++
 	s.stats.QNonLeafs++
 	if depthFromQRoot < MaxQDepthStats {
@@ -20,8 +34,17 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 	origBeta := beta
 	origAlpha := alpha
 
-	staticNegaEval := NegaStaticEval(s.board)
+	staticNegaEval := NegaStaticEvalFast(s.board, eval0)
 
+ 	// Sanity check the fast eval
+	if false {
+		staticNegaEvalCheck := NegaStaticEval(s.board)
+		if staticNegaEval != staticNegaEvalCheck {
+			fmt.Println("               eval", staticNegaEval, "evalCheck", staticNegaEvalCheck, "fen", s.board.ToFen())
+			os.Exit(1)
+		}
+	}
+	
 	// Stand pat - equivalent to considering the null move as a valid move.
 	// Essentially the player to move doesn't _have_ to make a 'noisy' move - assuming that there is a quiet move available.
 	if alpha < staticNegaEval {
@@ -148,6 +171,7 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 
 			// Make the move
 			s.board.MakeMove(move, &boardSave)
+			childEval0 := NegaStaticEvalOrder0Fast(s.board, -eval0, &boardSave)
 
 			if qDepthToGo <= 1 {
 				s.stats.QNodes++
@@ -156,10 +180,20 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 				// We hit max depth before quiescing
 				isQuiesced = false
 				// Ignore mate check to avoid generating moves at all leaf nodes
-				eval = NegaStaticEval(s.board)
+				eval := NegaStaticEvalFast(s.board, childEval0)
+
+				// Sanity check the fast eval
+				if false {
+					staticNegaEvalCheck := NegaStaticEval(s.board)
+					if eval != staticNegaEvalCheck {
+						fmt.Println("               eval", eval, "evalCheck", staticNegaEvalCheck, "i", i, "move", &move, "fen", s.board.ToFen())
+						os.Exit(1)
+					}
+				}
+				
 			} else {
 				var isChildQuiesced bool
-				childKiller, eval, isChildQuiesced = s.QSearchNegAlphaBeta(qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, childKiller)
+				childKiller, eval, isChildQuiesced = s.QSearchNegAlphaBeta(qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, childKiller, childEval0)
 				isQuiesced = isQuiesced && isChildQuiesced
 			}
 			eval = -eval // back to our perspective

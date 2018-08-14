@@ -13,8 +13,6 @@ import (
 // MUST be a power of 2 cos we use & instead of % for fast hash table index
 const TTSize = 1024 * 1024
 
-//const QttSize = 256*1024
-
 // Want this to be per-thread, but for now we're single-threaded so global is ok
 var tt []TTEntryT = make([]TTEntryT, TTSize)
 
@@ -24,8 +22,6 @@ func ResetTT() {
 
 // MUST be a power of 2 cos we use & instead of % for fast hash table index
 const QttSize = 64 * 1024
-
-//const QttSize = 256*1024
 
 // Want this to be per-thread, but for now we're single-threaded so global is ok
 var qtt []QSearchTTEntryT = make([]QSearchTTEntryT, QttSize)
@@ -73,8 +69,6 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 	//   final eval as the average of the evals for the last two plies.
 	var prevFullEval EvalCp = 0
 
-	// Best results from previous depth in case the timeout depth didn't get as far as returning a result
-
 	var maxDepthToGo = MaxDepth
 	if depth > 0 {
 		maxDepthToGo = depth
@@ -86,6 +80,9 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 	s := NewSearchT(board, ht, deepKillers[:], &stats, timeout)
 
+	// previous and previous previous depth timings
+	prevElapsedSecs, pprevElapsedSecs := float64(0), float64(0)
+	
 	var depthToGo int
 	// Iterative deepening
 	for depthToGo = MinDepth; depthToGo <= maxDepthToGo; depthToGo++ {
@@ -94,9 +91,10 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 		switch SearchAlgorithm {
 		case NegAlphaBeta:
+			eval0 := NegaStaticEvalOrder0(board)
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, YourCheckMateEval, MyCheckMateEval, fullBestMove, false)
+			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, YourCheckMateEval, MyCheckMateEval, fullBestMove, false, eval0)
 			eval = negaEval
 			if board.Colortomove == dragon.Black {
 				eval = -negaEval
@@ -117,7 +115,17 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 			}
 			// Print summary stats for the depth - slightly inaccurate because it includes accumulation of previous depths
 			fmt.Println("info depth", depthToGo, "score cp", evalForWhite, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", &bestMove)
+			if prevElapsedSecs != 0.0 {
+				fmt.Printf("info timing ratios d-1 %.3f", elapsedSecs/prevElapsedSecs)
+				if pprevElapsedSecs != 0.0 {
+					fmt.Printf(" d-2 %.3f", elapsedSecs/pprevElapsedSecs)
+				}
+			}
+			fmt.Println()
 		}
+
+		pprevElapsedSecs = prevElapsedSecs
+		prevElapsedSecs = elapsedSecs
 
 		// Have we timed out? If so, then ignore the results for this depth unless we got a valid partial result
 		if isTimedOut(timeout) {
@@ -213,14 +221,7 @@ func (mo *byMoValueDesc) Less(i, j int) bool {
 	return mo.values[i] > mo.values[j]
 }
 
-// Order q-search moves heuristically.
-// Preference is:
-// 1. Promotions by promo type
-// 2. MMV-LVA for captures
-//     (most valuable victim first, then least-valuable attacker second)
-func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, killer dragon.Move, killer2 dragon.Move, killersStat *uint64, deepKillersStat *uint64) {
-	// Value of each move - nothing to do with any other eval, just a local ordering metric
-	values := make([]uint8, len(moves))
+func mvvLvaEvalMoves(board *dragon.Board, moves []dragon.Move, values []uint8, ttMove dragon.Move, killer dragon.Move, killer2 dragon.Move, killersStat *uint64, deepKillersStat *uint64) {
 	for i, move := range moves {
 		if move == ttMove {
 			values[i] = ttMoveValue
@@ -240,7 +241,19 @@ func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, ki
 			values[i] = promoMOValue[promoPiece] + captureMOValue[victim][attacker]
 		}
 	}
+}
 
+// Order q-search moves heuristically.
+// TODO - Spending a lot of time here - maybe choose the best move (only) first time round,
+//          then do a full sort only if the first move doesn't cut.
+// Preference is:
+// 1. Promotions by promo type
+// 2. MMV-LVA for captures
+//     (most valuable victim first, then least-valuable attacker second)
+func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, killer dragon.Move, killer2 dragon.Move, killersStat *uint64, deepKillersStat *uint64) {
+	// Value of each move - nothing to do with any other eval, just a local ordering metric
+	values := make([]uint8, len(moves))
+	mvvLvaEvalMoves(board, moves, values, ttMove, killer, killer2, killersStat, deepKillersStat)
 	mo := byMoValueDesc{moves, values}
 	sort.Sort(&mo)
 }
