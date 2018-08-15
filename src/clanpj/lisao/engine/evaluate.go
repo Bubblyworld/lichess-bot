@@ -1,6 +1,7 @@
 package engine
 
 import (
+	// "fmt"
 	"math"
 	"math/bits"
 
@@ -322,6 +323,8 @@ func StaticEvalOrderN(board *dragon.Board) EvalCp {
 
 	orderNEval := pawnExtrasEval + kingProtectionEval + bishopPairEval + endgameEval
 
+	// fmt.Println("StaticEvalOrderN:", "pawnx", pawnExtrasEval, "kingpx", kingProtectionEval, "bishoppx", bishopPairEval, "egx", endgameEval)
+
 	// Clamp it to the absolute bounds
 	if orderNEval > MaxAbsStaticEvalOrderN {
 		orderNEval = MaxAbsStaticEvalOrderN
@@ -627,14 +630,14 @@ func rankFile(pos int) (int, int) {
 }
 
 // King-walk distance - I can't remember what the formal term is - basically max(delta(x), delta(y))
-func kingWalkDistance(pos1 int, pos2 int) uint8 {
+func kingWalkDistance(pos1 int, pos2 int) int {
 	pos1Rank, pos1File := rankFile(pos1)
 	pos2Rank, pos2File := rankFile(pos2)
 
 	rankDiff8 := absDiff8[pos1Rank][pos2Rank]
 	fileDiff8 := absDiff8[pos1File][pos2File]
 
-	return max8[rankDiff8][fileDiff8]
+	return int(max8[rankDiff8][fileDiff8])
 }
 
 // Absolute difference between two numbers in range [0,7]
@@ -693,7 +696,10 @@ func endgameColorVal(board *dragon.Board, color dragon.ColorT) EvalCp {
 		}
 		kingPos := bits.TrailingZeros64(myKings)
 
-		return endgameKingPawnProxBonus * EvalCp(3-kingWalkDistance(fwdPawnPos, kingPos))
+		pawnEgBonus := endgameKingPawnProxBonus * EvalCp(3-kingWalkDistance(fwdPawnPos, kingPos))
+
+		// fmt.Println("       color", color, "fwdPawnPos", fwdPawnPos, "kingPos", kingPos, "dist", kingWalkDistance(fwdPawnPos, kingPos), "bonus", pawnEgBonus)
+		return pawnEgBonus
 	}
 
 	// Case 2 - no pawns: we want to get the king near a rook or queen and shrink the opponent's king box
