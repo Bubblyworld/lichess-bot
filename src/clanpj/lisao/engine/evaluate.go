@@ -193,15 +193,16 @@ var blackKingPosVals = [64]int8{
 	17, 30, -3, -14, 6, -1, 40, 18}
 
 // From - https://chessprogramming.wikispaces.com/Simplified+evaluation+function
+// Added some deliberate jitter to add artificial discrimination into stuck end-games (like Fine 70)
 var blackKingEndgamePosVals = [64]int8{
-	-50, -40, -30, -20, -20, -30, -40, -50,
-	-30, -20, -10, 0, 0, -10, -20, -30,
-	-30, -10, 20, 30, 30, 20, -10, -30,
-	-30, -10, 30, 40, 40, 30, -10, -30,
-	-30, -10, 30, 40, 40, 30, -10, -30,
-	-30, -10, 20, 30, 30, 20, -10, -30,
-	-30, -30, 0, 0, 0, 0, -30, -30,
-	-50, -30, -30, -30, -30, -30, -30, -50}
+	-50, -41, -30, -20, -20, -30, -41, -50,
+	-32, -19, -9, 0, 0, -9, -19, -32,
+	-30, -12, 17, 29, 29, 17, -12, -30,
+	-29, -10, 30, 40, 40, 30, -10, -29,
+	-29, -10, 31, 41, 41, 31, -10, -29,
+	-30, -12, 18, 29, 29, 18, -12, -30,
+	-32, -30, 4, 0, 0, 4, -30, -32,
+	-50, -33, -30, -28, -28, -30, -33, -50}
 
 var blackPiecePosVals = [7]*[64]int8{
 	&nothingPosVals,
@@ -599,25 +600,25 @@ func bishopPairVal(board *dragon.Board) EvalCp {
 const blackSquares = uint64(0x5555555555555555)
 const whiteSquares = uint64(0xaaaaaaaaaaaaaaaa)
 const bishopPairBonus = EvalCp(80)
-const bishopPairDistancePenalty = EvalCp(3)
+const bishopPairProxBonus = EvalCp(3)
 
 func bishopPairColorVal(bitboards *dragon.Bitboards) EvalCp {
-	eval := EvalCp(0)
+	bishopsBonus := EvalCp(0)
 	bishops := bitboards[dragon.Bishop]
 	blackBishops := bishops & blackSquares
 	whiteBishops := bishops & whiteSquares
 	if blackBishops != 0 && whiteBishops != 0 {
-		eval += bishopPairBonus
+		bishopsBonus += bishopPairBonus
 
 		// Prefer Bishops to hunt close together (wildly speculative but it looks pretty).
-		// We assume there's only one bishop of each colour - but really if you are going to under-promote to a bishop you deserve a bogus eval.
+		// We assume there's only one bishop of each colour - but really if you are going to under-promote to a bishop you deserve a bogus bishopsBonus.
 		bBishopPos := bits.TrailingZeros64(blackBishops)
 		wBishopPos := bits.TrailingZeros64(whiteBishops)
 
-		eval -= bishopPairDistancePenalty*EvalCp(kingWalkDistance(bBishopPos, wBishopPos))
+		bishopsBonus += bishopPairProxBonus*EvalCp(2-kingWalkDistance(bBishopPos, wBishopPos))
 	}
 
-	return eval
+	return bishopsBonus
 }
 
 // Return the rank and file of a position
@@ -667,9 +668,9 @@ func oppColor(color dragon.ColorT) dragon.ColorT {
 	return dragon.Black ^ color
 }
 
-const endgameKingPawnDistPenalty = -EvalCp(13)
-const loneMinorPiecePenalty = -EvalCp(240)
-const endgameKingMajorDistPenalty = -EvalCp(17)
+const endgameKingPawnProxBonus = EvalCp(13)
+const loneMinorPiecePenalty = -EvalCp(190)
+const endgameKingMajorProxBonus = EvalCp(17)
 
 // TODO (rpj) I'm a bit concerned that these various eval categories will lead to sudden changes in the eval.
 func endgameColorVal(board *dragon.Board, color dragon.ColorT) EvalCp {
@@ -692,7 +693,7 @@ func endgameColorVal(board *dragon.Board, color dragon.ColorT) EvalCp {
 		}
 		kingPos := bits.TrailingZeros64(myKings)
 
-		return endgameKingPawnDistPenalty * EvalCp(kingWalkDistance(fwdPawnPos, kingPos))
+		return endgameKingPawnProxBonus * EvalCp(3-kingWalkDistance(fwdPawnPos, kingPos))
 	}
 
 	// Case 2 - no pawns: we want to get the king near a rook or queen and shrink the opponent's king box
@@ -712,24 +713,39 @@ func endgameColorVal(board *dragon.Board, color dragon.ColorT) EvalCp {
 			//   and king proximity to the major piece.
 			majorPos := bits.TrailingZeros64(myMajors)
 			kingPos := bits.TrailingZeros64(myKings)
-			kingMajorDistPenalty := endgameKingMajorDistPenalty * EvalCp(kingWalkDistance(majorPos, kingPos))
-
-			// Caculate opposition king square size
-			majorRank, majorFile := rankFile(majorPos)
-
 			oppKingPos := bits.TrailingZeros64(oppBbs[dragon.King])
+			majorRank, majorFile := rankFile(majorPos)
+			kingRank, kingFile := rankFile(majorPos)
 			oppKingRank, oppKingFile := rankFile(oppKingPos)
 
-			kingBoxNRanks := majorRank
-			if majorRank < oppKingRank {
-				kingBoxNRanks = 7-majorRank
-			}
-			kingBoxNFiles := majorFile
-			if majorFile < oppKingFile {
-				kingBoxNFiles = 7-majorFile
-			}
+			// No bonus if opposition king is on a check line
+			majorCheckMateBonus := EvalCp(0)
+			if oppKingRank != majorRank && oppKingFile != majorFile {
+				// No proximity bonus if our king is outside the opposition king's box
+				kingSouthOfMajor := kingRank < majorRank
+				kingWestOfMajor := kingFile < majorFile
+				oppKingSouthOfMajor := oppKingRank < majorRank
+				oppKingWestOfMajor := oppKingFile < majorFile
+				
+				kingMajorProxBonus := EvalCp(0)
+				// TODO(rpj) - this is wrong for some cases of our king and our major on the same rank or file
+				if kingSouthOfMajor != oppKingSouthOfMajor || kingWestOfMajor != oppKingWestOfMajor {
+					kingMajorProxBonus = endgameKingMajorProxBonus * EvalCp(2-kingWalkDistance(majorPos, kingPos))
+				}
+				
+				// Caculate opposition king square size
+				kingBoxNRanks := majorRank
+				if !oppKingSouthOfMajor {
+					kingBoxNRanks = 7-majorRank
+				}
+				kingBoxNFiles := majorFile
+				if !oppKingWestOfMajor {
+					kingBoxNFiles = 7-majorFile
+				}
 
-			return kingMajorDistPenalty - EvalCp(kingBoxNRanks*kingBoxNFiles) // smaller box is better
+				majorCheckMateBonus = kingMajorProxBonus + EvalCp(7*7 - kingBoxNRanks*kingBoxNFiles) // smaller box is better
+			}
+			return majorCheckMateBonus
 		}
 	}
 	return EvalCp(0)
