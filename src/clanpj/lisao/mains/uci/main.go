@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0eg Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0egpvk Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -498,7 +498,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	}
 
 	// Reverse order from which it appears in the UCI driver
-	if true {
+	if false {
 		fmt.Println("info string   q-mates:", perC(stats.QMates, stats.QNonLeafs), "q-pat-cuts:", perC(stats.QPatCuts, stats.QNonLeafs), "q-rampage-prunes:", perC(stats.QRampagePrunes, stats.QNonLeafs), "q-killers:", perC(stats.QKillers, stats.QNonLeafs), "q-killer-cuts:", perC(stats.QKillerCuts, stats.QNonLeafs), "q-deep-killers:", perC(stats.QDeepKillers, stats.QNonLeafs), "q-deep-killer-cuts:", perC(stats.QDeepKillerCuts, stats.QNonLeafs))
 		if engine.UseQSearchTT {
 			fmt.Println("info string   qtt-hits:", perC(stats.QttHits, stats.QNonLeafs), "qtt-depth-hits:", perC(stats.QttDepthHits, stats.QNonLeafs), "qtt-beta-cuts:", perC(stats.QttBetaCuts, stats.QNonLeafs), "qtt-alpha-cuts:", perC(stats.QttAlphaCuts, stats.QNonLeafs), "qtt-late-cuts:", perC(stats.QttLateCuts, stats.QNonLeafs), "qtt-true-evals:", perC(stats.QttTrueEvals, stats.QNonLeafs))

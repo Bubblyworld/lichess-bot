@@ -181,6 +181,13 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 				break
 			}
 		}
+		// copy the PV into the deep killers
+		for i, move := range pvLine[1:] {
+			if move == NoMove {
+				break
+			}
+			deepKillers[i] = move
+		}
 	}
 
 	// If we didn't get a move at all then barf

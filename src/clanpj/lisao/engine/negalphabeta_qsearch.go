@@ -56,7 +56,7 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 		s.stats.QPats++
 		s.stats.QPatCuts++
 
-		return NoMove, staticNegaEval, false // TODO - not sure what to return here for isQuiesced - this is playing safe
+		return NoMove, staticNegaEval, true
 	}
 
 	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
