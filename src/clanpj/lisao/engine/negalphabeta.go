@@ -8,8 +8,11 @@ import (
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
+// Used for non-PV sub-searches
+var dummyPvLine = make([]dragon.Move, MaxDepth)
+
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, parentNullMove bool, eval0 EvalCp) (dragon.Move, EvalCp) {
+func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, parentNullMove bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
 
 	// Sanity check the eval0
 	if false {
@@ -67,13 +70,16 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 				// If the eval is exact then we're done
 				if ttpEntry.evalType == TTEvalExact {
 					s.stats.TTTrueEvals++
+					ppvLine[1], ppvLine[2] = ttMove, NoMove // crop previous PV
 					return ttMove, ttpEntry.eval
 				} else {
 					var cutoffStats *uint64
+					isAlphaRaise := false
 					// We can have an alpha or beta cut-off depending on the eval type
 					if ttpEntry.evalType == TTEvalLowerBound {
 						cutoffStats = &s.stats.TTBetaCuts
 						if alpha < ttEval {
+							isAlphaRaise = true
 							alpha = ttEval
 						}
 					} else {
@@ -86,6 +92,9 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 					// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 					if alpha >= beta {
 						*cutoffStats++
+						if isAlphaRaise {
+							ppvLine[1], ppvLine[2] = ttMove, NoMove // crop previous PV
+						}
 						return ttMove, ttEval
 					}
 				}
@@ -97,6 +106,9 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	bestMove := NoMove
 	bestEval := YourCheckMateEval
 	childKiller := NoMove
+
+	// Maintain the PV line - 1 extra element for NoMove cropping with tt hit
+	pvLine := make([]dragon.Move, depthToGo+1)
 
 	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
 	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
@@ -130,7 +142,7 @@ done:
 					// Quiesce
 					childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller, childEval0)
 				} else {
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0, pvLine)
 				}
 				eval = -eval // back to our perspective
 
@@ -152,6 +164,9 @@ done:
 
 				if alpha < bestEval {
 					alpha = bestEval
+					// Update the PV line
+					pvLine[0] = hintMove
+					copy(ppvLine[1:], pvLine)
 				}
 
 				// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
@@ -189,7 +204,7 @@ done:
 				// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
 				if nNonPawns >= 6 {
 					unapply := s.board.ApplyNullMove()
-					_, nullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/ /*parentNullMove*/, true, -eval0)
+					_, nullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/ /*parentNullMove*/, true, -eval0, dummyPvLine)
 					nullMoveEval = -nullMoveEval // back to our perspective
 					unapply()
 
@@ -240,7 +255,7 @@ done:
 					// We go 2 plies shallower since our eval is unstable between odd/even plies.
 					// The result is effectively the (possibly new) ttMove.
 					// TODO - weaken the beta bound (and alpha?) a bit?
-					ttMove, _ = s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, idKiller, false, eval0)
+					ttMove, _ = s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, idKiller, false, eval0, dummyPvLine)
 
 				}
 				orderMoves(s.board, legalMoves, ttMove, killerMove, deepKiller, &s.stats.Killers, &s.stats.DeepKillers)
@@ -279,12 +294,13 @@ done:
 				if i == 0 || beta <= alpha+1 {
 					eval = -alpha-1
 				} else {
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, childEval0)
+					// TODO(rpj) pvLine???
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, childEval0, dummyPvLine)
 				}
 				
 				if -beta <= eval && eval < -alpha {
 					// Full search
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0, pvLine)
 				}
 			}
 			eval = -eval // back to our perspective
@@ -307,6 +323,9 @@ done:
 
 			if alpha < bestEval {
 				alpha = bestEval
+				// Update the PV line
+				pvLine[0] = move
+				copy(ppvLine[1:], pvLine)
 			}
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!

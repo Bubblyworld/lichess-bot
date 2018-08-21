@@ -13,13 +13,13 @@ import (
 	"github.com/pkg/profile"
 )
 
-var VersionString = "0.0ekm Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0eg Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	defer profile.Start().Stop()
 	fmt.Println("Starting...")
 	board := dragon.ParseFen(dragon.Startpos) // the game board
-	uciSearch(&board, 16, 0)
+	uciSearch(&board, 10, 0)
 }
 
 func perC(n uint64, N uint64) string {
@@ -48,7 +48,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	start := time.Now()
 
 	// Search for the winning move!
-	bestMove, eval, stats, finalDepth, _ := engine.Search(board, ht, depth, timeoutMs, &timeout)
+	bestMove, eval, stats, finalDepth, _, _ := engine.Search(board, ht, depth, timeoutMs, &timeout)
 
 	elapsedSecs := time.Since(start).Seconds()
 

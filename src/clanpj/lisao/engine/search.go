@@ -49,13 +49,30 @@ func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move
 	}
 }
 
+// Construct a pv string from the pv line, where available, defaulting to just the bet move otherwise
+func MkPvString(bestMove dragon.Move, pvLine []dragon.Move) string {
+	pv := ""
+	if pvLine[0] == NoMove {
+		pv = bestMove.String()
+	} else {
+		pv = pvLine[0].String()
+		for _, move := range pvLine[1:] {
+			if move == NoMove {
+				break
+			}
+			pv += " " + move.String()
+		}
+	}
+	return pv
+}
+
 // Return eval from white's perspective, and the best move plus some search stats
 // Does iterative deepening until depth or timeout
 // If depth param != 0 then we do fixed depth search.
 // If targetTimeMs != 0 then we try to limit tame waste by returning early from a full search at some depth when
 //   we reckon there is not enough time to do the full next-level search.
-// Return best-move, eval, stats, final-depth, error
-func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, error) {
+// Return best-move, eval, stats, final-depth, pv, error
+func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, []dragon.Move, error) {
 	var deepKillers [MaxDepth]dragon.Move
 	var stats SearchStatsT
 	var bestMove = NoMove
@@ -64,6 +81,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 	// Results from last full search or last valid partial search.
 	var fullDepth = 0
 	var fullBestMove = NoMove
+	var fullPvLine []dragon.Move
 	var fullEval EvalCp = 0
 	// TODO our eval is somewhat unstable between odd/even plies, so we smooth this by returning our
 	//   final eval as the average of the evals for the last two plies.
@@ -81,11 +99,14 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 	s := NewSearchT(board, ht, deepKillers[:], &stats, timeout)
 
 	// previous and previous previous depth timings
-	prevElapsedSecs, pprevElapsedSecs := float64(0), float64(0)
+	// prevElapsedSecs, pprevElapsedSecs := float64(0), float64(0)
 	
 	var depthToGo int
 	// Iterative deepening
 	for depthToGo = MinDepth; depthToGo <= maxDepthToGo; depthToGo++ {
+		// pvLine (where supported) - +1 cos [0] is unused, +1 more for tt NoMove crop
+		pvLine := make([]dragon.Move, depthToGo+2)
+		
 		// Time the search
 		start := time.Now()
 
@@ -94,14 +115,14 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 			eval0 := NegaStaticEvalOrder0(board)
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, YourCheckMateEval, MyCheckMateEval, fullBestMove, false, eval0)
+			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, YourCheckMateEval, MyCheckMateEval, fullBestMove, false, eval0, pvLine)
 			eval = negaEval
 			if board.Colortomove == dragon.Black {
 				eval = -negaEval
 			}
 
 		default:
-			return NoMove, 0, stats, 0, errors.New("bot: unrecognised search algorithm")
+			return NoMove, 0, stats, 0, fullPvLine, errors.New("bot: unrecognised search algorithm")
 		}
 
 		elapsedSecs := time.Since(start).Seconds()
@@ -114,18 +135,18 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 				evalForWhite = -eval
 			}
 			// Print summary stats for the depth - slightly inaccurate because it includes accumulation of previous depths
-			fmt.Println("info depth", depthToGo, "score cp", evalForWhite, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", &bestMove)
-			if prevElapsedSecs != 0.0 {
-				fmt.Printf("info timing ratios d-1 %.3f", elapsedSecs/prevElapsedSecs)
-				if pprevElapsedSecs != 0.0 {
-					fmt.Printf(" d-2 %.3f", elapsedSecs/pprevElapsedSecs)
-				}
-			}
-			fmt.Println()
+			fmt.Println("info depth", depthToGo, "score cp", evalForWhite, "nodes", stats.Nodes, "time", uint64(elapsedSecs*1000), "nps", uint64(float64(stats.Nodes)/elapsedSecs), "pv", MkPvString(bestMove, pvLine[1:]))
+			// if prevElapsedSecs != 0.0 {
+			// 	fmt.Printf("info timing ratios d-1 %.3f", elapsedSecs/prevElapsedSecs)
+			// 	if pprevElapsedSecs != 0.0 {
+			// 		fmt.Printf(" d-2 %.3f", elapsedSecs/pprevElapsedSecs)
+			// 	}
+			// }
+			// fmt.Println()
 		}
 
-		pprevElapsedSecs = prevElapsedSecs
-		prevElapsedSecs = elapsedSecs
+		// pprevElapsedSecs = prevElapsedSecs
+		// prevElapsedSecs = elapsedSecs
 
 		// Have we timed out? If so, then ignore the results for this depth unless we got a valid partial result
 		if isTimedOut(timeout) {
@@ -141,6 +162,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 		}
 
 		fullBestMove = bestMove
+		fullPvLine = pvLine[1:]
 		prevFullEval = fullEval
 		fullEval = eval
 		fullDepth = depthToGo
@@ -159,15 +181,22 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 				break
 			}
 		}
+		// copy the PV into the deep killers
+		for i, move := range pvLine[1:] {
+			if move == NoMove {
+				break
+			}
+			deepKillers[i] = move
+		}
 	}
 
 	// If we didn't get a move at all then barf
 	if fullBestMove == NoMove {
-		return NoMove, 0, stats, fullDepth, errors.New("bot: no legal move found in search")
+		return NoMove, 0, stats, fullDepth, fullPvLine, errors.New("bot: no legal move found in search")
 	}
 
 	// We smooth the odd/even instability by using the average eval of the last two depths
-	return fullBestMove, (fullEval + prevFullEval) / 2, stats, fullDepth, nil
+	return fullBestMove, (fullEval + prevFullEval) / 2, stats, fullDepth, fullPvLine, nil
 }
 
 func isTimedOut(timeout *uint32) bool {
