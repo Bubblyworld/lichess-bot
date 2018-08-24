@@ -9,7 +9,64 @@ import (
 )
 
 // Used for non-PV sub-searches
+// TODO (rpj) rather just use nil on non-PV paths
 var dummyPvLine = make([]dragon.Move, MaxDepth)
+
+// Return the new best eval, best move and updated alpha (functional style for Guy)
+func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp, move dragon.Move, ppvLine []dragon.Move, pvLine []dragon.Move) (EvalCp, dragon.Move, EvalCp) {
+	// Maximise our eval.
+	// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
+	if eval > bestEval {
+		bestEval, bestMove = eval, move
+	}
+	
+	if alpha < bestEval {
+		alpha = bestEval
+		// Update the PV line
+		if pvLine != nil {
+			pvLine[0] = move
+			if ppvLine != nil {
+				copy(ppvLine[1:], pvLine)
+			}
+		}
+	}
+
+	return bestEval, bestMove, alpha
+}
+
+// Return null-move eval
+func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, parentNullMove bool, eval0 EvalCp, isInCheck bool) EvalCp {
+	// Default to returning alpha (as always)
+	nullMoveEval := YourCheckMateEval
+	
+	if HeurUseNullMove {
+		const nullMoveDepthSkip = 3 // must be odd to cope with our even/odd ply eval instability
+		// Try null-move - but never 2 null moves in a row, and never in check otherwise king gets captured
+		if !isInCheck && !parentNullMove && beta != MyCheckMateEval && depthToGo >= nullMoveDepthSkip-2 {
+			// Use piece count to determine end-game for zugzwang avoidance - TODO improve this
+			nNonPawns := bits.OnesCount64((s.board.Bbs[dragon.White][dragon.All] & ^s.board.Bbs[dragon.White][dragon.Pawn]) | (s.board.Bbs[dragon.Black][dragon.All] & ^s.board.Bbs[dragon.Black][dragon.Pawn]))
+			// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
+			if nNonPawns >= 6 {
+				unapply := s.board.ApplyNullMove()
+				_, possibleNullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/, /*parentNullMove*/true, -eval0, dummyPvLine)
+				possibleNullMoveEval = -possibleNullMoveEval // back to our perspective
+				unapply()
+				
+				// Fiddle special case of depthToGo == 2 cos of even/odd eval differences
+				if depthToGo == nullMoveDepthSkip-1 {
+					possibleNullMoveEval -= s.oddEvenEvalDiff
+				}
+
+				// Bail cleanly without polluting search results if we have timed out
+				if !isTimedOut(s.timeout) {
+					nullMoveEval = possibleNullMoveEval
+				}
+			}
+		}
+	}
+
+	return nullMoveEval
+}
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
 func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, parentNullMove bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
@@ -30,6 +87,13 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	}
 
 	s.stats.Nodes++
+	
+	// Quiessence search - note that low-depthToGo null moves come in with depthToGo < 0
+	if depthToGo <= 0 {
+		childKiller, eval, _ := s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, alpha, beta, killer, eval0)
+		return childKiller, eval
+	}
+
 	s.stats.NonLeafs++
 	if depthFromRoot < MaxDepthStats {
 		s.stats.NonLeafsAt[depthFromRoot]++
@@ -137,7 +201,7 @@ done:
 				if UsePosRepetition && repetitions > 1 {
 					s.stats.PosRepetitions++
 					eval = DrawEval
-				} else if depthToGo <= 1 {
+				} else if false && depthToGo <= 1 {
 					s.stats.Nodes++
 					// Quiesce
 					childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller, childEval0)
@@ -194,44 +258,13 @@ done:
 			break done
 		}
 
-		// Try null-move heuristic
-		if HeurUseNullMove {
-			const nullMoveDepthSkip = 3 // must be odd to cope with our even/odd ply eval instability
-			// Try null-move - but never 2 null moves in a row, and never in check otherwise king gets captured
-			if !isInCheck && !parentNullMove && beta != MyCheckMateEval && depthToGo > nullMoveDepthSkip {
-				// Use piece count to determine end-game for zugzwang avoidance - TODO improve this
-				nNonPawns := bits.OnesCount64((s.board.Bbs[dragon.White][dragon.All] & ^s.board.Bbs[dragon.White][dragon.Pawn]) | (s.board.Bbs[dragon.Black][dragon.All] & ^s.board.Bbs[dragon.Black][dragon.Pawn]))
-				// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
-				if nNonPawns >= 6 {
-					unapply := s.board.ApplyNullMove()
-					_, nullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/ /*parentNullMove*/, true, -eval0, dummyPvLine)
-					nullMoveEval = -nullMoveEval // back to our perspective
-					unapply()
-
-					// Bail cleanly without polluting search results if we have timed out
-					if depthToGo > 1 && isTimedOut(s.timeout) {
-						break done
-					}
-
-					// Maximise our eval.
-					// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
-					if nullMoveEval > bestEval {
-						bestMove, bestEval = NoMove, nullMoveEval
-					}
-
-					if alpha < bestEval {
-						alpha = bestEval
-					}
-
-					// Did null-move heuristic already provide a cut?
-					if alpha >= beta {
-						s.stats.NullMoveCuts++
-
-						break done
-					}
-
-				}
-			}
+		// Null move heuristic
+		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, parentNullMove, eval0, isInCheck)
+		bestEval, bestMove, alpha = updateEval(bestEval, bestMove, alpha, nullMoveEval, NoMove, nil, nil)
+		// Did null-move heuristic already provide a cut?
+		if alpha >= beta {
+			s.stats.NullMoveCuts++
+			break done
 		}
 
 		killerMove := NoMove
@@ -285,7 +318,7 @@ done:
 			if UsePosRepetition && repetitions > 1 {
 				s.stats.PosRepetitions++
 				eval = DrawEval
-			} else if depthToGo <= 1 {
+			} else if false && depthToGo <= 1 {
 				s.stats.Nodes++
 				// Quiesce
 				childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller, childEval0)

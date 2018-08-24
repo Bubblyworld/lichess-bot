@@ -22,11 +22,11 @@ var UseIDMoveHint = true
 var MinIDMoveHintDepth = 3
 var UseKillerMoves = true
 var UseDeepKillerMoves = true // only valid if UseKillerMoves == true
-var UseTT = true
+var UseTT = false //true
 var HeurUseTTDeeperHits = true // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
 var QSearchDepth = 12
-var UseQSearchTT = true
+var UseQSearchTT = false //true
 var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true

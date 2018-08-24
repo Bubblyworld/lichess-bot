@@ -30,6 +30,9 @@ func ResetQtt() {
 	qtt = make([]QSearchTTEntryT, QttSize)
 }
 
+// The maximum difference between odd and even depth evals - a bit less than 50 at starting position which is almost certainly the worst case.
+const MaxOddEvenEvalDiff = EvalCp(50)
+
 // Search tree encapsulation
 type SearchT struct {
 	board       *dragon.Board
@@ -37,15 +40,17 @@ type SearchT struct {
 	deepKillers []dragon.Move
 	stats       *SearchStatsT
 	timeout     *uint32
+	oddEvenEvalDiff EvalCp // An estimate of the absolute eval difference between even and odd depths - used for eval estimates in null-move heuristic, for example
 }
 
-func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32) *SearchT {
+func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32, oddEvenEvalDiff EvalCp) *SearchT {
 	return &SearchT{
 		board:       board,
 		ht:          ht,
 		deepKillers: deepKillers,
 		stats:       stats,
 		timeout:     timeout,
+		oddEvenEvalDiff: oddEvenEvalDiff,
 	}
 }
 
@@ -64,6 +69,14 @@ func MkPvString(bestMove dragon.Move, pvLine []dragon.Move) string {
 		}
 	}
 	return pv
+}
+
+func absEvalCp(eval EvalCp) EvalCp {
+	if EvalCp(0) <= eval {
+		return eval
+	} else {
+		return -eval
+	}
 }
 
 // Return eval from white's perspective, and the best move plus some search stats
@@ -87,6 +100,10 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 	//   final eval as the average of the evals for the last two plies.
 	var prevFullEval EvalCp = 0
 
+	const minNEvalDiffs = 4 // the minimum number of eval diffs we need to override the default even/odd difference with empirical values
+	var nEvalDiffs      int // the number of eval diffs we have seen, between adjacent depth levels
+	var sumEvalAbsDiffs EvalCp // the sum of absolute diffs of adjacent depth level evals
+
 	var maxDepthToGo = MaxDepth
 	if depth > 0 {
 		maxDepthToGo = depth
@@ -96,7 +113,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 	fmt.Println("info string using", SearchAlgorithmString(), "max depth", maxDepthToGo)
 
-	s := NewSearchT(board, ht, deepKillers[:], &stats, timeout)
+	s := NewSearchT(board, ht, deepKillers[:], &stats, timeout, 50)
 
 	// previous and previous previous depth timings
 	// prevElapsedSecs, pprevElapsedSecs := float64(0), float64(0)
@@ -112,6 +129,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 		switch SearchAlgorithm {
 		case NegAlphaBeta:
+			fmt.Println("                                                   NegAlphaBeta - using", s.oddEvenEvalDiff, " as odd/even eval diff")
 			eval0 := NegaStaticEvalOrder0(board)
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
@@ -166,6 +184,16 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 		prevFullEval = fullEval
 		fullEval = eval
 		fullDepth = depthToGo
+
+		// Update even/odd eval diff stats
+		if MinDepth < depthToGo {
+			nEvalDiffs++
+			sumEvalAbsDiffs += absEvalCp(fullEval - prevFullEval)
+			if nEvalDiffs >= minNEvalDiffs {
+				// Even/odd difference tends to shrink with increasing depth, so this is conservative
+				s.oddEvenEvalDiff = (sumEvalAbsDiffs + EvalCp(nEvalDiffs-1))/EvalCp(nEvalDiffs)
+			}
+		}
 
 		// Then always bail on time-out
 		if isTimedOut(timeout) {
