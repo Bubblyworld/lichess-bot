@@ -180,6 +180,18 @@ done:
 	for once := true; once; once = false {
 		var boardSave dragon.BoardSaveT
 
+		isInCheck := isInCheckFast(s.board)
+
+		// Null-move heuristic.
+		// Note we miss stalemate here, but that should be a vanishingly small case
+		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, parentNullMove, eval0, isInCheck)
+		bestEval, bestMove, alpha = updateEval(bestEval, bestMove, alpha, nullMoveEval, NoMove, nil, nil)
+		// Did null-move heuristic already provide a cut?
+		if alpha >= beta {
+			s.stats.NullMoveCuts++
+			break done
+		}
+
 		// TODO also use killer moves, but need to check them first for validity
 		hintMove := ttMove
 
@@ -248,22 +260,13 @@ done:
 		}
 
 		// Generate all legal moves
-		legalMoves, isInCheck := s.board.GenerateLegalMoves2(false /*all moves*/)
+		legalMoves, _ := s.board.GenerateLegalMoves2(false /*all moves*/)
 
 		// Check for checkmate or stalemate
 		if len(legalMoves) == 0 {
 			s.stats.Mates++
 			bestMove, bestEval = NoMove, negaMateEval(s.board, depthFromRoot) // TODO use isInCheck
 
-			break done
-		}
-
-		// Null move heuristic
-		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, parentNullMove, eval0, isInCheck)
-		bestEval, bestMove, alpha = updateEval(bestEval, bestMove, alpha, nullMoveEval, NoMove, nil, nil)
-		// Did null-move heuristic already provide a cut?
-		if alpha >= beta {
-			s.stats.NullMoveCuts++
 			break done
 		}
 

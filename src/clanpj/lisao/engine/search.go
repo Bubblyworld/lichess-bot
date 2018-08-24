@@ -11,7 +11,8 @@ import (
 )
 
 // MUST be a power of 2 cos we use & instead of % for fast hash table index
-const TTSize = 1024 * 1024
+//const TTSize = 1024 * 1024
+const TTSize = 2 * 1024 * 1024
 
 // Want this to be per-thread, but for now we're single-threaded so global is ok
 var tt []TTEntryT = make([]TTEntryT, TTSize)
@@ -21,7 +22,8 @@ func ResetTT() {
 }
 
 // MUST be a power of 2 cos we use & instead of % for fast hash table index
-const QttSize = 64 * 1024
+//const QttSize = 64 * 1024
+const QttSize = 256 * 1024
 
 // Want this to be per-thread, but for now we're single-threaded so global is ok
 var qtt []QSearchTTEntryT = make([]QSearchTTEntryT, QttSize)
@@ -223,8 +225,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 		return NoMove, 0, stats, fullDepth, fullPvLine, errors.New("bot: no legal move found in search")
 	}
 
-	// We smooth the odd/even instability by using the average eval of the last two depths
-	return fullBestMove, (fullEval + prevFullEval) / 2, stats, fullDepth, fullPvLine, nil
+	return fullBestMove, fullEval, stats, fullDepth, fullPvLine, nil
 }
 
 func isTimedOut(timeout *uint32) bool {
@@ -313,4 +314,11 @@ func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, ki
 	mvvLvaEvalMoves(board, moves, values, ttMove, killer, killer2, killersStat, deepKillersStat)
 	mo := byMoValueDesc{moves, values}
 	sort.Sort(&mo)
+}
+
+// TODO actually make fast(er)
+// We can do fast heuristics based on the previous move for example -
+//   only the previous move could have placed you in check, either directly or by discovery
+func isInCheckFast(board *dragon.Board) bool {
+       return board.OurKingInCheck()
 }

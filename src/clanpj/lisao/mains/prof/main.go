@@ -19,7 +19,7 @@ func main() {
 	defer profile.Start().Stop()
 	fmt.Println("Starting...")
 	board := dragon.ParseFen(dragon.Startpos) // the game board
-	uciSearch(&board, 10, 0)
+	uciSearch(&board, 11, 0)
 }
 
 func perC(n uint64, N uint64) string {

@@ -17,16 +17,17 @@ var SearchDepth = 7          // Ignored now that time control is implemented
 var SearchCutoffPercent = 25 // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
 var HeurUseNullMove = true
 var UseEarlyMoveHint = false // Try the hint move before doing movegen - worse until we can do early null-move heuristic (requires in-check test)
+                             // Hrmph, using just ttMove is worse than not - need better search first?
 var UseMoveOrdering = true
 var UseIDMoveHint = true
 var MinIDMoveHintDepth = 3
 var UseKillerMoves = true
 var UseDeepKillerMoves = true // only valid if UseKillerMoves == true
-var UseTT = false //true
+var UseTT = true
 var HeurUseTTDeeperHits = true // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
 var QSearchDepth = 12
-var UseQSearchTT = false //true
+var UseQSearchTT = true
 var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
