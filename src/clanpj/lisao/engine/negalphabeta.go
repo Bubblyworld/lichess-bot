@@ -192,6 +192,26 @@ done:
 			break done
 		}
 
+		killerMove := NoMove
+		if UseKillerMoves {
+			killerMove = killer
+		}
+		deepKiller := NoMove
+		if UseDeepKillerMoves {
+			deepKiller = s.deepKillers[depthFromRoot]
+		}
+		
+		if UseIDMoveHint && depthToGo >= MinIDMoveHintDepth {
+			// Get the best move for a search of depth-2.
+			// We go 2 plies shallower since our eval is unstable between odd/even plies.
+			// The result is effectively the (possibly new) ttMove.
+			// TODO - weaken the beta bound (and alpha?) a bit?
+			idMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, killer, parentNullMove, eval0, dummyPvLine)
+			if idMove != NoMove {
+				ttMove = idMove
+			}
+		}
+		
 		// TODO also use killer moves, but need to check them first for validity
 		hintMove := ttMove
 
@@ -270,30 +290,9 @@ done:
 			break done
 		}
 
-		killerMove := NoMove
-		if UseKillerMoves {
-			killerMove = killer
-		}
-		deepKiller := NoMove
-		if UseDeepKillerMoves {
-			deepKiller = s.deepKillers[depthFromRoot]
-		}
-
 		// Sort the moves heuristically
 		if UseMoveOrdering {
 			if len(legalMoves) > 1 {
-				if UseIDMoveHint && depthToGo >= MinIDMoveHintDepth {
-					idKiller := killerMove
-					if idKiller == NoMove {
-						idKiller = ttMove
-					}
-					// Get the best move for a search of depth-2.
-					// We go 2 plies shallower since our eval is unstable between odd/even plies.
-					// The result is effectively the (possibly new) ttMove.
-					// TODO - weaken the beta bound (and alpha?) a bit?
-					ttMove, _ = s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, idKiller, false, eval0, dummyPvLine)
-
-				}
 				orderMoves(s.board, legalMoves, ttMove, killerMove, deepKiller, &s.stats.Killers, &s.stats.DeepKillers)
 			}
 		} else if UseKillerMoves {
