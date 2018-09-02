@@ -40,20 +40,32 @@ type SearchT struct {
 	board       *dragon.Board
 	ht          HistoryTableT
 	deepKillers []dragon.Move
+	evalByDepth []EvalCp
 	stats       *SearchStatsT
 	timeout     *uint32
 	oddEvenEvalDiff EvalCp // An estimate of the absolute eval difference between even and odd depths - used for eval estimates in null-move heuristic, for example
 }
 
-func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move, stats *SearchStatsT, timeout *uint32, oddEvenEvalDiff EvalCp) *SearchT {
+func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move, evalByDepth []EvalCp, stats *SearchStatsT, timeout *uint32, oddEvenEvalDiff EvalCp) *SearchT {
 	return &SearchT{
 		board:       board,
 		ht:          ht,
 		deepKillers: deepKillers,
+		evalByDepth: evalByDepth,
 		stats:       stats,
 		timeout:     timeout,
 		oddEvenEvalDiff: oddEvenEvalDiff,
 	}
+}
+
+// Estimate an eval for the opposite depth parity
+func (s *SearchT) paritySwapEval(eval EvalCp, depth int) EvalCp {
+	// Mate is mate, mate
+	if eval < YourCheckMateEval + MaxDepth || MyCheckMateEval - MaxDepth < eval {
+		return eval
+	}
+	// Otherwise use the depth eval difference for the root position to adjust to the previous depth
+	return eval - s.evalByDepth[depth] + s.evalByDepth[depth-1]
 }
 
 // Construct a pv string from the pv line, where available, defaulting to just the bet move otherwise
@@ -89,6 +101,7 @@ func absEvalCp(eval EvalCp) EvalCp {
 // Return best-move, eval, stats, final-depth, pv, error
 func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, []dragon.Move, error) {
 	var deepKillers [MaxDepth]dragon.Move
+	var evalByDepth [MaxDepth]EvalCp
 	var stats SearchStatsT
 	var bestMove = NoMove
 	var eval EvalCp = 0
@@ -115,13 +128,13 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 	fmt.Println("info string using", SearchAlgorithmString(), "max depth", maxDepthToGo)
 
-	s := NewSearchT(board, ht, deepKillers[:], &stats, timeout, 50)
+	s := NewSearchT(board, ht, deepKillers[:], evalByDepth[:], &stats, timeout, 50)
 
 	// previous and previous previous depth timings
 	// prevElapsedSecs, pprevElapsedSecs := float64(0), float64(0)
 	
 	var depthToGo int
-	// Iterative deepening
+	// Iterative deepening - note we do need to go depth by depth cos we use previous depth evals to fudge even/odd parity TT evals
 	for depthToGo = MinDepth; depthToGo <= maxDepthToGo; depthToGo++ {
 		// pvLine (where supported) - +1 cos [0] is unused, +1 more for tt NoMove crop
 		pvLine := make([]dragon.Move, depthToGo+2)
@@ -201,6 +214,8 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 		if isTimedOut(timeout) {
 			break
 		}
+
+		evalByDepth[depthToGo] = eval
 
 		// Bail early if we don't think we can get another full search level done
 		if targetTimeMs > 0 {

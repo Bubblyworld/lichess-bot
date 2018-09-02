@@ -44,5 +44,5 @@ func SearchAlgorithmString() string {
 }
 
 const MinDepth = 1
-const MaxDepth = 1024
+const MaxDepth = 255 // needs to fit in uint8 in some places
 const NoMove dragon.Move = 0
