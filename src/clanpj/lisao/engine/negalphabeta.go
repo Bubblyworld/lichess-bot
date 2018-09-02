@@ -35,7 +35,7 @@ func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp
 }
 
 // Return null-move eval
-func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, pNullMove bool, eval0 EvalCp, isInCheck bool) EvalCp {
+func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, pNullMove bool, pLMR bool, eval0 EvalCp, isInCheck bool) EvalCp {
 	// Default to returning alpha (as always)
 	nullMoveEval := YourCheckMateEval
 	
@@ -48,7 +48,7 @@ func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta 
 			// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
 			if nNonPawns >= 6 {
 				unapply := s.board.ApplyNullMove()
-				_, possibleNullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove, /*pNullMove*/true, -eval0, dummyPvLine)
+				_, possibleNullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove, /*pNullMove*/true, pLMR, -eval0, dummyPvLine)
 				possibleNullMoveEval = -possibleNullMoveEval // back to our perspective
 				unapply()
 				
@@ -189,7 +189,7 @@ func widenAlpha(alpha EvalCp, pad EvalCp) EvalCp {
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, pNullMove bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
+func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, pNullMove bool, pLMR bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
 
 	// Sanity check the eval0
 	if false {
@@ -247,7 +247,7 @@ done:
 
 		// Null-move heuristic.
 		// Note we miss stalemate here, but that should be a vanishingly small case
-		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, pNullMove, eval0, isInCheck)
+		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, pNullMove, pLMR, eval0, isInCheck)
 		bestEval, bestMove, alpha = updateEval(bestEval, bestMove, alpha, nullMoveEval, NoMove, nil, nil)
 		// Did null-move heuristic already provide a cut?
 		if alpha >= beta {
@@ -277,7 +277,7 @@ done:
 			if YourCheckMateEval + idGap < idAlpha { idAlpha -= idGap }
 			idBeta := beta
 			if idBeta < MyCheckMateEval - idGap { idBeta += idGap }
-			idMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, idAlpha, idBeta, killer, pNullMove, eval0, dummyPvLine)
+			idMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, idAlpha, idBeta, killer, pNullMove, pLMR, eval0, dummyPvLine)
 			if idMove != NoMove {
 				ttMove = idMove
 			}
@@ -307,7 +307,7 @@ done:
 					s.stats.PosRepetitions++
 					eval = DrawEval
 				} else {
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0, pvLine)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, false, childEval0, pvLine)
 				}
 				eval = -eval // back to our perspective
 
@@ -394,7 +394,7 @@ done:
 			} else {
 				eval = -alpha-1
 				// LMR and null window probe - don't bother if we're on the PV
-				if !firstMove {
+				if !pLMR && !firstMove {
 					// Late Move Reduction - null-window probe at reduced depth with heuristicly wider alpha
 
 					// depth-4 probe
@@ -404,7 +404,7 @@ done:
 					}
 					if YourCheckMateEval + lmrAlphaPad <= alpha && false && 9 <= depthToGo {
 						lmrAlpha := alpha - lmrAlphaPad
-						childKiller, eval = s.NegAlphaBeta(depthToGo-5, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, false, childEval0, dummyPvLine)
+						childKiller, eval = s.NegAlphaBeta(depthToGo-5, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, false, true, childEval0, dummyPvLine)
 						// If LMR probe fails to raise lmrAlpha then avoid full depth probe by fiddling eval appropriately
 						if eval > -lmrAlpha-1 {
 							eval = -alpha
@@ -414,13 +414,13 @@ done:
 					}
 					
 					// depth-2 probe
-					lmrAlphaPad = EvalCp(35-depthToGo)
-					if lmrAlphaPad < 20 {
-						lmrAlphaPad = EvalCp(20)
+					lmrAlphaPad = EvalCp(30-depthToGo)
+					if lmrAlphaPad < 15 {
+						lmrAlphaPad = EvalCp(15)
 					}
 					if eval < -alpha && YourCheckMateEval + lmrAlphaPad <= alpha && /*false &&*/ 5 <= depthToGo {
 						lmrAlpha := alpha - lmrAlphaPad
-						childKiller, eval = s.NegAlphaBeta(depthToGo-3, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, false, childEval0, dummyPvLine)
+						childKiller, eval = s.NegAlphaBeta(depthToGo-3, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, false, true, childEval0, dummyPvLine)
 						// If LMR probe fails to raise lmrAlpha then avoid full depth probe by fiddling eval appropriately
 						if eval > -lmrAlpha-1 {
 							eval = -alpha
@@ -432,13 +432,13 @@ done:
 					// Null window probe (PV-search) - don't bother if the LMR probe failed or we're already in a null window
 					if eval < -alpha && beta <= alpha+1 {
 						// TODO(rpj) pvLine???
-						childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, childEval0, dummyPvLine)
+						childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, false, childEval0, dummyPvLine)
 					}
 				}
 				
 				if -beta <= eval && eval < -alpha {
 					// Full search
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0, pvLine)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, false, childEval0, pvLine)
 				}
 			}
 			eval = -eval // back to our perspective
