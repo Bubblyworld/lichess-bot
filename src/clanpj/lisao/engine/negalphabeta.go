@@ -68,6 +68,14 @@ func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta 
 	return nullMoveEval
 }
 
+func widenAlpha(alpha EvalCp, pad EvalCp) EvalCp {
+	if alpha < YourCheckMateEval + pad {
+		return YourCheckMateEval
+	} else {
+		return alpha - pad
+	}
+}
+
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
 func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, parentNullMove bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
 
@@ -205,8 +213,16 @@ done:
 			// Get the best move for a search of depth-2.
 			// We go 2 plies shallower since our eval is unstable between odd/even plies.
 			// The result is effectively the (possibly new) ttMove.
-			// TODO - weaken the beta bound (and alpha?) a bit?
-			idMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, alpha, beta, killer, parentNullMove, eval0, dummyPvLine)
+			// We weaken the alpha and beta bounds bit to get a more accurate best-move (particularly in null-windows).
+			// const minIdGap = EvalCp(5)
+			// idGap := EvalCp(12 - depthToGo/2)
+			// if idGap < minIdGap { idGap = minIdGap }
+			idGap := EvalCp(5) // best at depth 12 at start pos but it's quite sensitive
+			idAlpha := alpha
+			if YourCheckMateEval + idGap < idAlpha { idAlpha -= idGap }
+			idBeta := beta
+			if idBeta < MyCheckMateEval - idGap { idBeta += idGap }
+			idMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, idAlpha, idBeta, killer, parentNullMove, eval0, dummyPvLine)
 			if idMove != NoMove {
 				ttMove = idMove
 			}
@@ -214,6 +230,8 @@ done:
 		
 		// TODO also use killer moves, but need to check them first for validity
 		hintMove := ttMove
+		// We don't do null-window or depth-reduction for the first child
+		firstMove := true
 
 		// Try hint move before doing move-gen if we have a known valid move hint
 		if UseEarlyMoveHint {
@@ -233,10 +251,6 @@ done:
 				if UsePosRepetition && repetitions > 1 {
 					s.stats.PosRepetitions++
 					eval = DrawEval
-				} else if false && depthToGo <= 1 {
-					s.stats.Nodes++
-					// Quiesce
-					childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller, childEval0)
 				} else {
 					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0, pvLine)
 				}
@@ -246,6 +260,8 @@ done:
 				s.ht.Remove(s.board.Hash())
 				// Take back the move
 				s.board.Restore(&boardSave)
+
+				firstMove = false
 
 				// Bail cleanly without polluting search results if we have timed out
 				if depthToGo > 1 && isTimedOut(s.timeout) {
@@ -320,17 +336,49 @@ done:
 			if UsePosRepetition && repetitions > 1 {
 				s.stats.PosRepetitions++
 				eval = DrawEval
-			} else if false && depthToGo <= 1 {
-				s.stats.Nodes++
-				// Quiesce
-				childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1 /*depthFromQRoot*/, 0, -beta, -alpha, childKiller, childEval0)
 			} else {
-				// Null window probe - don't bother if we're already in a null window or on the PV
-				if i == 0 || beta <= alpha+1 {
-					eval = -alpha-1
-				} else {
-					// TODO(rpj) pvLine???
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, childEval0, dummyPvLine)
+				eval = -alpha-1
+				// LMR and null window probe - don't bother if we're on the PV
+				if !firstMove {
+					// Late Move Reduction - null-window probe at reduced depth with heuristicly wider alpha
+
+					// depth-4 probe
+					lmrAlphaPad := EvalCp(60-depthToGo)
+					if lmrAlphaPad < 40 {
+						lmrAlphaPad = EvalCp(40)
+					}
+					if YourCheckMateEval + lmrAlphaPad <= alpha && false && 9 <= depthToGo {
+						lmrAlpha := alpha - lmrAlphaPad
+						childKiller, eval = s.NegAlphaBeta(depthToGo-5, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, false, childEval0, dummyPvLine)
+						// If LMR probe fails to raise lmrAlpha then avoid full depth probe by fiddling eval appropriately
+						if eval > -lmrAlpha-1 {
+							eval = -alpha
+						} else {
+							eval = -alpha-1
+						}
+					}
+					
+					// depth-2 probe
+					lmrAlphaPad = EvalCp(35-depthToGo)
+					if lmrAlphaPad < 20 {
+						lmrAlphaPad = EvalCp(20)
+					}
+					if eval < -alpha && YourCheckMateEval + lmrAlphaPad <= alpha && /*false &&*/ 5 <= depthToGo {
+						lmrAlpha := alpha - lmrAlphaPad
+						childKiller, eval = s.NegAlphaBeta(depthToGo-3, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, false, childEval0, dummyPvLine)
+						// If LMR probe fails to raise lmrAlpha then avoid full depth probe by fiddling eval appropriately
+						if eval > -lmrAlpha-1 {
+							eval = -alpha
+						} else {
+							eval = -alpha-1
+						}
+					}
+					
+					// Null window probe (PV-search) - don't bother if the LMR probe failed or we're already in a null window
+					if eval < -alpha && beta <= alpha+1 {
+						// TODO(rpj) pvLine???
+						childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, childEval0, dummyPvLine)
+					}
 				}
 				
 				if -beta <= eval && eval < -alpha {
@@ -344,6 +392,8 @@ done:
 			s.ht.Remove(s.board.Hash())
 			// Take back the move
 			s.board.Restore(&boardSave)
+
+			firstMove = false
 
 			// Bail cleanly without polluting search results if we have timed out
 			if depthToGo > 1 && isTimedOut(s.timeout) {
