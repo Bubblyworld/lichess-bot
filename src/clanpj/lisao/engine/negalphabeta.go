@@ -35,20 +35,20 @@ func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp
 }
 
 // Return null-move eval
-func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, parentNullMove bool, eval0 EvalCp, isInCheck bool) EvalCp {
+func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, pNullMove bool, eval0 EvalCp, isInCheck bool) EvalCp {
 	// Default to returning alpha (as always)
 	nullMoveEval := YourCheckMateEval
 	
 	if HeurUseNullMove {
 		const nullMoveDepthSkip = 3 // must be odd to cope with our even/odd ply eval instability
 		// Try null-move - but never 2 null moves in a row, and never in check otherwise king gets captured
-		if !isInCheck && !parentNullMove && beta != MyCheckMateEval && depthToGo >= nullMoveDepthSkip-2 {
+		if !isInCheck && !pNullMove && beta != MyCheckMateEval && depthToGo >= nullMoveDepthSkip-2 {
 			// Use piece count to determine end-game for zugzwang avoidance - TODO improve this
 			nNonPawns := bits.OnesCount64((s.board.Bbs[dragon.White][dragon.All] & ^s.board.Bbs[dragon.White][dragon.Pawn]) | (s.board.Bbs[dragon.Black][dragon.All] & ^s.board.Bbs[dragon.Black][dragon.Pawn]))
 			// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
 			if nNonPawns >= 6 {
 				unapply := s.board.ApplyNullMove()
-				_, possibleNullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove /*killer???*/, /*parentNullMove*/true, -eval0, dummyPvLine)
+				_, possibleNullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove, /*pNullMove*/true, -eval0, dummyPvLine)
 				possibleNullMoveEval = -possibleNullMoveEval // back to our perspective
 				unapply()
 				
@@ -189,7 +189,7 @@ func widenAlpha(alpha EvalCp, pad EvalCp) EvalCp {
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, parentNullMove bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
+func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, pNullMove bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
 
 	// Sanity check the eval0
 	if false {
@@ -247,7 +247,7 @@ done:
 
 		// Null-move heuristic.
 		// Note we miss stalemate here, but that should be a vanishingly small case
-		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, parentNullMove, eval0, isInCheck)
+		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, pNullMove, eval0, isInCheck)
 		bestEval, bestMove, alpha = updateEval(bestEval, bestMove, alpha, nullMoveEval, NoMove, nil, nil)
 		// Did null-move heuristic already provide a cut?
 		if alpha >= beta {
@@ -277,7 +277,7 @@ done:
 			if YourCheckMateEval + idGap < idAlpha { idAlpha -= idGap }
 			idBeta := beta
 			if idBeta < MyCheckMateEval - idGap { idBeta += idGap }
-			idMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, idAlpha, idBeta, killer, parentNullMove, eval0, dummyPvLine)
+			idMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, idAlpha, idBeta, killer, pNullMove, eval0, dummyPvLine)
 			if idMove != NoMove {
 				ttMove = idMove
 			}
