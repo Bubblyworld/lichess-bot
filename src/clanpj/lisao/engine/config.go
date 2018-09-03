@@ -26,7 +26,8 @@ var UseTT = true
 var HeurUseTTDeeperHits = true // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
 var QSearchDepth = 12
-var UseQSearchTT = false //true
+var UseQSearchTT = true
+var HeurUseQTTDeeperHits = true // true iff we embrace deeper QTT results as valid (heuristic!)
 var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true

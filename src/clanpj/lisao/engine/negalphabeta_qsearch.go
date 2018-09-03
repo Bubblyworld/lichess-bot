@@ -7,6 +7,74 @@ import (
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
+func (s *SearchT) probeQTT(qDepthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move, EvalCp, bool, bool) {
+	if UseQSearchTT {
+		qttEntry, isQttHit := probeQtt(qtt, s.board.Hash())
+
+		if isQttHit {
+			s.stats.QttHits++
+
+			//////// First try to find an exact eval at the same depth (or deeper if HeurUseQTTDeeperHits is configured)
+			
+			// Try the lower bound of the same depth parity (it might be exact)
+			qttpLbEntry := &qttEntry.lbEntry
+			// We can use this value if its same depth or deeper (and HeurUseQTTDeeperHits is configured),
+			//    OR if the QTT entry is a quiesced value
+			qttpLbEntryUseable :=
+				(qttpLbEntry.isQuiesced && (qttpLbEntry.qDepthToGo == uint8(qDepthToGo) || HeurUseQTTDeeperHits)) ||
+				qttpLbEntry.evalType != TTInvalid && (qttpLbEntry.qDepthToGo == uint8(qDepthToGo) || (HeurUseQTTDeeperHits && qttpLbEntry.qDepthToGo > uint8(qDepthToGo)))
+			if qttpLbEntryUseable && qttpLbEntry.evalType == TTEvalExact {
+				s.stats.QttTrueEvals++
+				return qttpLbEntry.bestMove, qttpLbEntry.eval, qttpLbEntry.isQuiesced, true
+			}
+				
+			// Try the upper bound of the same depth parity (it might be exact)
+			qttpUbEntry := &qttEntry.ubEntry
+			// We can use this value if its same depth or deeper (and HeurUseQTTDeeperHits is configured),
+			//    OR if the QTT entry is a quiesced value
+			qttpUbEntryUseable :=
+				(qttpUbEntry.isQuiesced && (qttpUbEntry.qDepthToGo == uint8(qDepthToGo) || HeurUseQTTDeeperHits)) ||
+				qttpUbEntry.evalType != TTInvalid && (qttpUbEntry.qDepthToGo == uint8(qDepthToGo) || (HeurUseQTTDeeperHits && qttpUbEntry.qDepthToGo > uint8(qDepthToGo)))
+			if qttpUbEntryUseable && qttpUbEntry.evalType == TTEvalExact {
+				s.stats.QttTrueEvals++
+				return qttpUbEntry.bestMove, qttpUbEntry.eval, qttpUbEntry.isQuiesced, true
+			}
+
+			//////// See if we have a beta cut
+			if qttpLbEntryUseable {
+				if beta <= qttpLbEntry.eval {
+					s.stats.QttBetaCuts++
+					return qttpLbEntry.bestMove, qttpLbEntry.eval, qttpLbEntry.isQuiesced, true
+				}
+			}
+			
+			//////// See if we have an alpha cut
+			if qttpUbEntryUseable {
+				if qttpUbEntry.eval <= alpha {
+					s.stats.QttAlphaCuts++
+					return qttpUbEntry.bestMove, qttpUbEntry.eval, qttpUbEntry.isQuiesced, true
+				}
+			}
+
+			//////// Set the qttMove
+			qttMove, qttMoveDepthToGo := NoMove, uint8(0)
+			if qttpLbEntry.evalType != TTInvalid {
+				qttMove = qttpLbEntry.bestMove
+				qttMoveDepthToGo = qttpLbEntry.depthToGo
+			} else if qttpUbEntry.evalType != TTInvalid && qttMoveDepthToGo < qttpUbEntry.depthToGo {
+				qttMove = qttpUbEntry.bestMove
+				qttMoveDepthToGo = qttpUbEntry.depthToGo
+			}
+
+			return qttMove, YourCheckMateEval, false, false
+			
+		}
+	}
+
+	return NoMove, YourCheckMateEval, false, false
+}
+
+
 // Quiescence search - differs from full search as follows:
 //   - we only look at captures, promotions and check evasion - we could/should also possibly look at checks, but check detection is currently expensive
 //   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
@@ -62,54 +130,11 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
 
 	// Probe the Quiescence Transposition Table
-	var qttMove = NoMove
-	if UseQSearchTT {
-		qttEntry, isQttHit := probeQtt(qtt, s.board.Hash())
-
-		if isQttHit {
-			s.stats.QttHits++
-
-			qttMove = qttEntry.bestMove
-
-			// If the QTT hit is for exactly the same depth then use the eval; otherwise we just use the bestMove as a move hint
-			// Note that most engines will use the TT eval if the TT entry is a deeper search; however this requires a 'stable' static eval
-			//   and changes behaviour between TT-enabled/disabled. For rigourous testing it's better to be consistent.
-			isExactHit := qDepthToGo == int(qttEntry.qDepthToGo) ||
-				//    ... or if this is a fully quiesced result
-				qDepthToGo > int(qttEntry.qDepthToGo) && qttEntry.isQuiesced
-
-			if isExactHit {
-				s.stats.QttDepthHits++
-				qttEval := qttEntry.eval
-				// If the eval is exact then we're done
-				if qttEntry.evalType == TTEvalExact {
-					s.stats.QttTrueEvals++
-					return qttMove, qttEntry.eval, qttEntry.isQuiesced
-				} else {
-					var cutoffStats *uint64
-					// We can have an alpha or beta cut-off depending on the eval type
-					if qttEntry.evalType == TTEvalLowerBound {
-						cutoffStats = &s.stats.QttBetaCuts
-						if alpha < qttEval {
-							alpha = qttEval
-						}
-					} else {
-						// TTEvalUpperBound
-						cutoffStats = &s.stats.QttAlphaCuts
-						if qttEval < beta {
-							beta = qttEval
-						}
-					}
-					// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-					if alpha >= beta {
-						*cutoffStats++
-						return qttMove, qttEval, qttEntry.isQuiesced
-					}
-				}
-			}
-		}
+	qttMove, qttEval, qttIsQuiesced, qttIsCut := s.probeQTT(qDepthToGo, alpha, beta)
+	if qttIsCut {
+		return qttMove, qttEval, qttIsQuiesced
 	}
-
+	
 	// Maximise eval with beta cut-off
 	bestMove := NoMove
 	bestEval := staticNegaEval // stand pat value

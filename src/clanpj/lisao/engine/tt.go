@@ -82,7 +82,6 @@ func writeTTEntry(tt []TTEntryT, zobrist uint64, eval EvalCp, bestMove dragon.Mo
 
 // Update a TT entry
 // There is policy in here, because we need to decide whether to overwrite or not with different depths and eval types.
-// TODO - tune
 func updateTTEntry(entry *TTEntryT, eval EvalCp, bestMove dragon.Move, depthToGo int, evalType TTEvalT) {
 	depthToGo8 := uint8(depthToGo)
 	pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
