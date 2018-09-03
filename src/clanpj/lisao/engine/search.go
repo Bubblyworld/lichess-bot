@@ -144,7 +144,6 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 
 		switch SearchAlgorithm {
 		case NegAlphaBeta:
-			fmt.Println("                                                   NegAlphaBeta - using", s.oddEvenEvalDiff, " as odd/even eval diff")
 			eval0 := NegaStaticEvalOrder0(board)
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp

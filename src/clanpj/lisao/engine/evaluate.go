@@ -314,6 +314,7 @@ const MaxAbsStaticEvalOrderN = EvalCp(500)
 
 // Expensive part - O(n) even with delta eval - of static eval from white's perspective.
 func StaticEvalOrderN(board *dragon.Board) EvalCp {
+
 	endGameRatio := endGameRatioByPiecesCount(board)
 
 	pawnExtrasEval := pawnExtrasVal(board)
@@ -322,8 +323,6 @@ func StaticEvalOrderN(board *dragon.Board) EvalCp {
 	endgameEval := endgameVal(board)
 
 	orderNEval := pawnExtrasEval + kingProtectionEval + bishopPairEval + endgameEval
-
-	// fmt.Println("StaticEvalOrderN:", "pawnx", pawnExtrasEval, "kingpx", kingProtectionEval, "bishoppx", bishopPairEval, "egx", endgameEval)
 
 	// Clamp it to the absolute bounds
 	if orderNEval > MaxAbsStaticEvalOrderN {
@@ -455,13 +454,14 @@ var blackPassedPawnPosVals = [64]int8{
 	0, 0, 0, 0, 0, 0, 0, 0}
 
 // Bonus for pawns protecting pawns
-const pProtPawnVal = 10
+// Disabled since it actually seems worse for root position search
+const pProtPawnVal = 0
 
 // Bonus for pawns protecting pieces
-const pProtPieceVal = 7
+const pProtPieceVal = 10
 
 // Penalty per doubled pawn
-const doubledPawnPenalty = -15
+const doubledPawnPenalty = -5
 
 // Pawn extras
 func pawnExtrasVal(board *dragon.Board) EvalCp {
@@ -470,7 +470,7 @@ func pawnExtrasVal(board *dragon.Board) EvalCp {
 
 	// Passed pawns
 	wPawnScope := WPawnScope(wPawns)
-	bPawnScope := BPawnScope(wPawns)
+	bPawnScope := BPawnScope(bPawns)
 
 	wPassedPawns := wPawns & ^bPawnScope
 	bPassedPawns := bPawns & ^wPawnScope
