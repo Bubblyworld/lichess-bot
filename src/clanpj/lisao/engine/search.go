@@ -11,18 +11,21 @@ import (
 )
 
 // MUST be a power of 2 cos we use & instead of % for fast hash table index
-//const TTSize = 1024 * 1024
-const TTSize = 2 * 1024 * 1024
+const TTSize = 1 * 1024 * 1024
+// Main TT
+var tt TtT = make([]TTEntryT, TTSize)
 
-// Want this to be per-thread, but for now we're single-threaded so global is ok
-var tt []TTEntryT = make([]TTEntryT, TTSize)
+// MUST be a power of 2 cos we use & instead of % for fast hash table index
+const TT2Size = 256 * 1024
+// Secondary TT for deep nodes (far from leaves)
+var tt2 TtT = make([]TTEntryT, TT2Size)
 
 func ResetTT() {
 	tt = make([]TTEntryT, TTSize)
+	tt2 = make([]TTEntryT, TT2Size)
 }
 
 // MUST be a power of 2 cos we use & instead of % for fast hash table index
-//const QttSize = 64 * 1024
 const QttSize = 256 * 1024
 
 // Want this to be per-thread, but for now we're single-threaded so global is ok
@@ -43,7 +46,12 @@ type SearchT struct {
 	evalByDepth []EvalCp
 	stats       *SearchStatsT
 	timeout     *uint32
+	depth       int        // max search tree depth
 	oddEvenEvalDiff EvalCp // An estimate of the absolute eval difference between even and odd depths - used for eval estimates in null-move heuristic, for example
+}
+
+func (s *SearchT) deepTtMinDepth() int {
+	return s.depth/2
 }
 
 func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move, evalByDepth []EvalCp, stats *SearchStatsT, timeout *uint32, oddEvenEvalDiff EvalCp) *SearchT {
@@ -136,6 +144,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 	var depthToGo int
 	// Iterative deepening - note we do need to go depth by depth cos we use previous depth evals to fudge even/odd parity TT evals
 	for depthToGo = MinDepth; depthToGo <= maxDepthToGo; depthToGo++ {
+		s.depth = depthToGo
 		// pvLine (where supported) - +1 cos [0] is unused, +1 more for tt NoMove crop
 		pvLine := make([]dragon.Move, depthToGo+2)
 		

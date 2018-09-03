@@ -46,40 +46,6 @@ func isTTHit(entry *TTEntryT, zobrist uint64) bool {
 
 func depthToGoParity(depthToGo int) int { return depthToGo & 1 }
 
-// Initialise a TT entry
-func writeTTEntry(tt []TTEntryT, zobrist uint64, eval EvalCp, bestMove dragon.Move, depthToGo int, evalType TTEvalT) {
-	var entry TTEntryT // use a full struct overwrite to obliterate old data
-
-	// Do we already have an entry for the hash?
-	oldTTEntry, isHit := probeTT(tt, zobrist)
-
-	if isHit {
-		entry = oldTTEntry
-		updateTTEntry(&entry, eval, bestMove, depthToGo, evalType)
-	} else {
-		// initialise a new entry
-		entry.zobrist = zobrist
-
-		pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
-
-		if evalType == TTEvalExact || evalType == TTEvalLowerBound {
-			pEntry.lbEntry.eval = eval
-			pEntry.lbEntry.bestMove = bestMove
-			pEntry.lbEntry.depthToGo = uint8(depthToGo)
-			pEntry.lbEntry.evalType = evalType
-		}
-
-		if evalType == TTEvalExact || evalType == TTEvalUpperBound {
-			pEntry.ubEntry.eval = eval
-			pEntry.ubEntry.bestMove = bestMove
-			pEntry.ubEntry.depthToGo = uint8(depthToGo)
-			pEntry.ubEntry.evalType = evalType
-		}
-	}
-	index := ttIndex(tt, zobrist)
-	tt[index] = entry
-}
-
 // Update a TT entry
 // There is policy in here, because we need to decide whether to overwrite or not with different depths and eval types.
 func updateTTEntry(entry *TTEntryT, eval EvalCp, bestMove dragon.Move, depthToGo int, evalType TTEvalT) {
@@ -117,3 +83,40 @@ func probeTT(tt []TTEntryT, zobrist uint64) (TTEntryT, bool) {
 
 	return entry, isTTHit(&entry, zobrist)
 }
+
+type TtT []TTEntryT
+
+// Initialise a TT entry
+func (tt TtT) writeTTEntry(zobrist uint64, eval EvalCp, bestMove dragon.Move, depthToGo int, evalType TTEvalT) {
+	var entry TTEntryT // use a full struct overwrite to obliterate old data
+
+	// Do we already have an entry for the hash?
+	oldTTEntry, isHit := probeTT(tt, zobrist)
+
+	if isHit {
+		entry = oldTTEntry
+		updateTTEntry(&entry, eval, bestMove, depthToGo, evalType)
+	} else {
+		// initialise a new entry
+		entry.zobrist = zobrist
+
+		pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
+
+		if evalType == TTEvalExact || evalType == TTEvalLowerBound {
+			pEntry.lbEntry.eval = eval
+			pEntry.lbEntry.bestMove = bestMove
+			pEntry.lbEntry.depthToGo = uint8(depthToGo)
+			pEntry.lbEntry.evalType = evalType
+		}
+
+		if evalType == TTEvalExact || evalType == TTEvalUpperBound {
+			pEntry.ubEntry.eval = eval
+			pEntry.ubEntry.bestMove = bestMove
+			pEntry.ubEntry.depthToGo = uint8(depthToGo)
+			pEntry.ubEntry.evalType = evalType
+		}
+	}
+	index := ttIndex(tt, zobrist)
+	tt[index] = entry
+}
+

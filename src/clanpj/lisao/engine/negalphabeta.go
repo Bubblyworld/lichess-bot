@@ -65,114 +65,156 @@ func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta 
 
 func (s *SearchT) probeTT(depthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move, EvalCp, bool) {
 	if UseTT {
+		// Try the deep TT
+		if UseDeepTT && depthToGo >= s.deepTtMinDepth() {
+			ttEntry, isTTHit := probeTT(tt2, s.board.Hash())
+			// We check that the TT entry is not a relic from a shallower search (in which case it is likely to be worse than the main TT entry)
+			if isTTHit && s.ttHitIsDeep(&ttEntry) {
+				return s.processTtHit(&ttEntry, depthToGo, alpha, beta)
+			}
+		}
+
+		// Try the general TT
 		ttEntry, isTTHit := probeTT(tt, s.board.Hash())
 
 		if isTTHit {
-			s.stats.TTHits++
-
-			//////// First try to find an exact eval at the same depth (or deeper if HeurUseTTDeeperHits is configured)
-
-			// Try the same depth parity first
-			ttpEntry := &ttEntry.parityHits[depthToGoParity(depthToGo)]
-
-			// Try the lower bound of the same depth parity (it might be exact)
-			ttpLbEntry := &ttpEntry.lbEntry
-			// We can use this value if its same depth or deeper (and HeurUseTTDeeperHits is configured)
-			ttpLbEntryUseable := ttpLbEntry.evalType != TTInvalid && (ttpLbEntry.depthToGo == uint8(depthToGo) || (HeurUseTTDeeperHits && ttpLbEntry.depthToGo > uint8(depthToGo)))
-			if ttpLbEntryUseable && ttpLbEntry.evalType == TTEvalExact {
-				s.stats.TTTrueEvals++
-				return ttpLbEntry.bestMove, ttpLbEntry.eval, true
-			}
-				
-			// Try the upper bound of the same depth parity (it might be exact)
-			ttpUbEntry := &ttpEntry.ubEntry
-			// We can use this value if its same depth or deeper (and HeurUseTTDeeperHits is configured)
-			ttpUbEntryUseable := ttpLbEntry.evalType != TTInvalid && (ttpUbEntry.depthToGo == uint8(depthToGo) || (HeurUseTTDeeperHits && ttpUbEntry.depthToGo > uint8(depthToGo)))
-			if ttpUbEntryUseable && ttpUbEntry.evalType == TTEvalExact {
-				s.stats.TTTrueEvals++
-				return ttpUbEntry.bestMove, ttpUbEntry.eval, true
-			}
-
-			// ...then try the opposite parity entry (and we have to fudge the eval to correct for even/odd parity eval differences)
-			ttpEntry2 := &ttEntry.parityHits[depthToGoParity(depthToGo)^1]
-
-			// Try the lower bound of the opposite depth parity (it might be exact)
-			ttpLbEntry2 := &ttpEntry2.lbEntry
-			// We can use this value if its deeper (and HeurUseTTDeeperHits is configured)
-			ttpLbEntry2Useable := ttpLbEntry.evalType != TTInvalid && (HeurUseTTDeeperHits && ttpLbEntry2.depthToGo > uint8(depthToGo))
-			if ttpLbEntry2Useable && ttpLbEntry2.evalType == TTEvalExact {
-				s.stats.TTTrueEvals++
-				return ttpLbEntry2.bestMove, s.paritySwapEval(ttpLbEntry2.eval, int(ttpLbEntry2.depthToGo)), true
-			}
-				
-			// Try the upper bound of the opposite depth parity (it might be exact)
-			ttpUbEntry2 := &ttpEntry2.ubEntry
-			// We can use this value if its deeper (and HeurUseTTDeeperHits is configured)
-			ttpUbEntry2Useable := ttpLbEntry.evalType != TTInvalid && (HeurUseTTDeeperHits && ttpUbEntry2.depthToGo > uint8(depthToGo))
-			if ttpUbEntry2Useable && ttpUbEntry2.evalType == TTEvalExact {
-				s.stats.TTTrueEvals++
-				return ttpUbEntry2.bestMove, s.paritySwapEval(ttpUbEntry2.eval, int(ttpUbEntry2.depthToGo)), true
-			}
-
-			//////// See if we have a beta cut
-
-			// First for TT entry of the same parity
-			if ttpLbEntryUseable {
-				if beta <= ttpLbEntry.eval {
-					s.stats.TTBetaCuts++
-					return ttpLbEntry.bestMove, ttpLbEntry.eval, true
-				}
-			}
-			
-			// ... then for TT entry of the opposite parity (and we have to fudge the eval to correct for even/odd parity eval differences)
-			if ttpLbEntry2Useable {
-				paritySwapEval := s.paritySwapEval(ttpLbEntry2.eval, int(ttpLbEntry2.depthToGo))
-				if beta <= paritySwapEval {
-					s.stats.TTBetaCuts++
-					return ttpLbEntry2.bestMove, paritySwapEval, true
-				}
-			}
-
-			//////// See if we have an alpha cut
-
-			// First for TT entry of the same parity
-			if ttpUbEntryUseable {
-				if ttpUbEntry.eval <= alpha {
-					s.stats.TTAlphaCuts++
-					return ttpUbEntry.bestMove, ttpUbEntry.eval, true
-				}
-			}
-			
-			// ... then for TT entry of the opposite parity (and we have to fudge the eval to correct for even/odd parity eval differences)
-			if ttpUbEntry2Useable {
-				paritySwapEval := s.paritySwapEval(ttpUbEntry2.eval, int(ttpUbEntry2.depthToGo))
-				if paritySwapEval <= alpha {
-					s.stats.TTAlphaCuts++
-					return ttpUbEntry2.bestMove, paritySwapEval, true
-				}
-			}
-
-			//////// Set the ttMove
-			ttMove, ttMoveDepthToGo := NoMove, uint8(0)
-			if ttpLbEntry.evalType != TTInvalid {
-				ttMove = ttpLbEntry.bestMove
-				ttMoveDepthToGo = ttpLbEntry.depthToGo
-			} else if ttpUbEntry.evalType != TTInvalid && ttMoveDepthToGo < ttpUbEntry.depthToGo {
-				ttMove = ttpUbEntry.bestMove
-				ttMoveDepthToGo = ttpUbEntry.depthToGo
-			} else if ttpLbEntry2.evalType != TTInvalid && ttMoveDepthToGo < ttpLbEntry2.depthToGo {
-				ttMove = ttpLbEntry2.bestMove
-				ttMoveDepthToGo = ttpLbEntry2.depthToGo
-			} else if ttpUbEntry2.evalType != TTInvalid && ttMoveDepthToGo < ttpUbEntry2.depthToGo {
-				ttMove = ttpUbEntry2.bestMove
-				ttMoveDepthToGo = ttpUbEntry2.depthToGo
-			}
-
-			return ttMove, YourCheckMateEval, false
+			return s.processTtHit(&ttEntry, depthToGo, alpha, beta)
 		}
 	}
-
+	
 	return NoMove, YourCheckMateEval, false
+}
+
+func (s *SearchT) ttHitIsDeep(ttEntry *TTEntryT) bool {
+	deepTtMinDepth := uint8(s.deepTtMinDepth())
+	
+	return ttEntry.parityHits[0].lbEntry.depthToGo >= deepTtMinDepth ||
+		ttEntry.parityHits[0].ubEntry.depthToGo >= deepTtMinDepth ||
+		ttEntry.parityHits[1].lbEntry.depthToGo >= deepTtMinDepth ||
+		ttEntry.parityHits[1].ubEntry.depthToGo >= deepTtMinDepth
+}
+
+func (s *SearchT) processTtHit(ttEntry *TTEntryT, depthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move, EvalCp, bool) {
+	s.stats.TTHits++
+	
+	//////// First try to find an exact eval at the same depth (or deeper if HeurUseTTDeeperHits is configured)
+	
+	// Try the same depth parity first
+	ttpEntry := &ttEntry.parityHits[depthToGoParity(depthToGo)]
+	
+	// Try the lower bound of the same depth parity (it might be exact)
+	ttpLbEntry := &ttpEntry.lbEntry
+	// We can use this value if its same depth or deeper (and HeurUseTTDeeperHits is configured)
+	ttpLbEntryUseable := ttpLbEntry.evalType != TTInvalid && (ttpLbEntry.depthToGo == uint8(depthToGo) || (HeurUseTTDeeperHits && ttpLbEntry.depthToGo > uint8(depthToGo)))
+	if ttpLbEntryUseable && ttpLbEntry.evalType == TTEvalExact {
+		s.stats.TTTrueEvals++
+		return ttpLbEntry.bestMove, ttpLbEntry.eval, true
+	}
+	
+	// Try the upper bound of the same depth parity (it might be exact)
+	ttpUbEntry := &ttpEntry.ubEntry
+	// We can use this value if its same depth or deeper (and HeurUseTTDeeperHits is configured)
+	ttpUbEntryUseable := ttpLbEntry.evalType != TTInvalid && (ttpUbEntry.depthToGo == uint8(depthToGo) || (HeurUseTTDeeperHits && ttpUbEntry.depthToGo > uint8(depthToGo)))
+	if ttpUbEntryUseable && ttpUbEntry.evalType == TTEvalExact {
+		s.stats.TTTrueEvals++
+		return ttpUbEntry.bestMove, ttpUbEntry.eval, true
+	}
+	
+	// ...then try the opposite parity entry (and we have to fudge the eval to correct for even/odd parity eval differences)
+	ttpEntry2 := &ttEntry.parityHits[depthToGoParity(depthToGo)^1]
+	
+	// Try the lower bound of the opposite depth parity (it might be exact)
+	ttpLbEntry2 := &ttpEntry2.lbEntry
+	// We can use this value if its deeper (and HeurUseTTDeeperHits is configured)
+	ttpLbEntry2Useable := ttpLbEntry.evalType != TTInvalid && (HeurUseTTDeeperHits && ttpLbEntry2.depthToGo > uint8(depthToGo))
+	if ttpLbEntry2Useable && ttpLbEntry2.evalType == TTEvalExact {
+		s.stats.TTTrueEvals++
+		return ttpLbEntry2.bestMove, s.paritySwapEval(ttpLbEntry2.eval, int(ttpLbEntry2.depthToGo)), true
+	}
+	
+	// Try the upper bound of the opposite depth parity (it might be exact)
+	ttpUbEntry2 := &ttpEntry2.ubEntry
+	// We can use this value if its deeper (and HeurUseTTDeeperHits is configured)
+	ttpUbEntry2Useable := ttpLbEntry.evalType != TTInvalid && (HeurUseTTDeeperHits && ttpUbEntry2.depthToGo > uint8(depthToGo))
+	if ttpUbEntry2Useable && ttpUbEntry2.evalType == TTEvalExact {
+		s.stats.TTTrueEvals++
+		return ttpUbEntry2.bestMove, s.paritySwapEval(ttpUbEntry2.eval, int(ttpUbEntry2.depthToGo)), true
+	}
+	
+	//////// See if we have a beta cut
+	
+	// First for TT entry of the same parity
+	if ttpLbEntryUseable {
+		if beta <= ttpLbEntry.eval {
+			s.stats.TTBetaCuts++
+			return ttpLbEntry.bestMove, ttpLbEntry.eval, true
+		}
+	}
+	
+	// ... then for TT entry of the opposite parity (and we have to fudge the eval to correct for even/odd parity eval differences)
+	if ttpLbEntry2Useable {
+		paritySwapEval := s.paritySwapEval(ttpLbEntry2.eval, int(ttpLbEntry2.depthToGo))
+		if beta <= paritySwapEval {
+			s.stats.TTBetaCuts++
+			return ttpLbEntry2.bestMove, paritySwapEval, true
+		}
+	}
+	
+	//////// See if we have an alpha cut
+	
+	// First for TT entry of the same parity
+	if ttpUbEntryUseable {
+		if ttpUbEntry.eval <= alpha {
+			s.stats.TTAlphaCuts++
+			return ttpUbEntry.bestMove, ttpUbEntry.eval, true
+		}
+	}
+	
+	// ... then for TT entry of the opposite parity (and we have to fudge the eval to correct for even/odd parity eval differences)
+	if ttpUbEntry2Useable {
+		paritySwapEval := s.paritySwapEval(ttpUbEntry2.eval, int(ttpUbEntry2.depthToGo))
+		if paritySwapEval <= alpha {
+			s.stats.TTAlphaCuts++
+			return ttpUbEntry2.bestMove, paritySwapEval, true
+		}
+	}
+	
+	//////// Set the ttMove
+	ttMove, ttMoveDepthToGo := NoMove, uint8(0)
+	if ttpLbEntry.evalType != TTInvalid {
+		ttMove = ttpLbEntry.bestMove
+		ttMoveDepthToGo = ttpLbEntry.depthToGo
+	} else if ttpUbEntry.evalType != TTInvalid && ttMoveDepthToGo < ttpUbEntry.depthToGo {
+		ttMove = ttpUbEntry.bestMove
+		ttMoveDepthToGo = ttpUbEntry.depthToGo
+	} else if ttpLbEntry2.evalType != TTInvalid && ttMoveDepthToGo < ttpLbEntry2.depthToGo {
+		ttMove = ttpLbEntry2.bestMove
+		ttMoveDepthToGo = ttpLbEntry2.depthToGo
+	} else if ttpUbEntry2.evalType != TTInvalid && ttMoveDepthToGo < ttpUbEntry2.depthToGo {
+		ttMove = ttpUbEntry2.bestMove
+		ttMoveDepthToGo = ttpUbEntry2.depthToGo
+	}
+	
+	return ttMove, YourCheckMateEval, false
+}
+
+func (s *SearchT) updateTt(depthToGo int, origAlpha EvalCp, origBeta EvalCp, bestEval EvalCp, bestMove dragon.Move) {
+	if UseTT {
+		evalType := TTEvalExact
+		if origBeta <= bestEval {
+			evalType = TTEvalLowerBound
+		} else if bestEval <= origAlpha {
+			evalType = TTEvalUpperBound
+		}
+
+		// Write back to the deep TT if this is a deep node
+		if UseDeepTT && depthToGo >= s.deepTtMinDepth() {
+			tt2.writeTTEntry(s.board.Hash(), bestEval, bestMove, depthToGo, evalType)
+		}
+		
+		// Write back to the main TT
+		tt.writeTTEntry(s.board.Hash(), bestEval, bestMove, depthToGo, evalType)
+	}
 }
 
 func widenAlpha(alpha EvalCp, pad EvalCp) EvalCp {
@@ -490,19 +532,9 @@ done:
 		s.deepKillers[depthFromRoot] = bestMove
 	} // end of fake run-once loop
 
-	if UseTT {
-		// Update the TT - but only if the search was not truncated due to a time-out
-		if !isTimedOut(s.timeout) {
-			evalType := TTEvalExact
-			if origBeta <= bestEval {
-				evalType = TTEvalLowerBound
-			} else if bestEval <= origAlpha {
-				evalType = TTEvalUpperBound
-			}
-			// Write back the TT entry - this is an update if the TT already contains an entry for this hash
-			// TODO - should we write back using the ttEntry we probed before? Prob not a biggie cos clashes are so rare
-			writeTTEntry(tt, s.board.Hash(), bestEval, bestMove, depthToGo, evalType)
-		}
+	// Update the TT - but only if the search was not truncated due to a time-out
+	if !isTimedOut(s.timeout) {
+		s.updateTt(depthToGo, origAlpha, origBeta, bestEval, bestMove)
 	}
 
 	// Regardless of a time-out this will still be valid - if bestMove == NoMove then we didn't complete any child branch
