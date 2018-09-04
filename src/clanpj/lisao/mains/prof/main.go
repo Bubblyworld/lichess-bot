@@ -15,11 +15,14 @@ import (
 
 var VersionString = "0.0eg Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
+const Fine70Fen = "8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 w - -"
+
 func main() {
 	defer profile.Start().Stop()
 	fmt.Println("Starting...")
 	board := dragon.ParseFen(dragon.Startpos) // the game board
-	uciSearch(&board, 14, 0)
+	//board := dragon.ParseFen(Fine70Fen) // the game board
+	uciSearch(&board, 12, 0)
 }
 
 func perC(n uint64, N uint64) string {

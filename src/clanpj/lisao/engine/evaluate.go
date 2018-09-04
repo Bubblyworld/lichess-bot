@@ -113,15 +113,16 @@ var whiteKingPosVals = [64]int8{
 	4, 54, 47, -99, -99, 60, 83, -62}
 
 // From - https://chessprogramming.wikispaces.com/Simplified+evaluation+function - (tables inverted to reflect dragon pos ordering)
+// Added some deliberate jitter to add artificial discrimination into stuck end-games (like Fine 70)
 var whiteKingEndgamePosVals = [64]int8{
-	-50, -30, -30, -30, -30, -30, -30, -50,
-	-30, -30, 0, 0, 0, 0, -30, -30,
-	-30, -10, 20, 30, 30, 20, -10, -30,
-	-30, -10, 30, 40, 40, 30, -10, -30,
-	-30, -10, 30, 40, 40, 30, -10, -30,
-	-30, -10, 20, 30, 30, 20, -10, -30,
-	-30, -20, -10, 0, 0, -10, -20, -30,
-	-50, -40, -30, -20, -20, -30, -40, -50}
+	-50, -33, -30, -28, -28, -30, -33, -50,
+	-32, -30, 4, 0, 0, 4, -30, -32,
+	-30, -12, 18, 29, 29, 18, -12, -30,
+	-29, -10, 31, 41, 41, 31, -10, -29,
+	-29, -10, 30, 40, 40, 30, -10, -29,
+	-30, -12, 17, 29, 29, 17, -12, -30,
+	-32, -19, -9, 0, 0, -9, -19, -32,
+	-50, -41, -30, -20, -20, -30, -41, -50}
 
 var whitePiecePosVals = [7]*[64]int8{
 	&nothingPosVals,
