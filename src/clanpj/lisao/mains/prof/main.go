@@ -16,13 +16,16 @@ import (
 var VersionString = "0.0eg Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 const Fine70Fen = "8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 w - -"
+const RandomFen = "r4k2/pp1b1p1Q/3pp1n1/7R/4P3/1B3q2/P1P1N3/1K6 b - - 0 1"
 
 func main() {
 	defer profile.Start().Stop()
 	fmt.Println("Starting...")
-	board := dragon.ParseFen(dragon.Startpos) // the game board
-	//board := dragon.ParseFen(Fine70Fen) // the game board
-	uciSearch(&board, 12, 0)
+	//board := dragon.ParseFen(dragon.Startpos)
+	board := dragon.ParseFen(Fine70Fen)
+	//board := dragon.ParseFen(RandomFen)
+	uciSearch(&board, 24, 0)
+	fmt.Println("#nodes-d0", engine.NodesD0, "#neg", engine.NodesD0NegDiff, "Max d0/dm1 eval diff", engine.MaxD0DM1EvalDiff, "Max d0/dm1 eval diff", engine.MinD0DM1EvalDiff)
 }
 
 func perC(n uint64, N uint64) string {

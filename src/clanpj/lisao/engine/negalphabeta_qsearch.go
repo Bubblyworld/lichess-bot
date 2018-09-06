@@ -143,7 +143,7 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 	isQuiesced := false
 
 	// Generate all noisy legal moves
-	legalMoves, isInCheck := s.board.GenerateLegalMoves2( /*onlyCapturesPromosCheckEvasion*/ true)
+	legalMoves, isInCheck := s.board.GenerateLegalMoves2(/*onlyCapturesPromosCheckEvasion*/true)
 
 	if len(legalMoves) == 0 {
 		// No noisy moves - checkmate or stalemate or just quiesced

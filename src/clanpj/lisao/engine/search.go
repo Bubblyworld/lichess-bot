@@ -78,7 +78,7 @@ func (s *SearchT) depthSwitchEval(eval EvalCp, fromDepth int, toDepth int) EvalC
 		return eval
 	}
 	// Otherwise use the depth eval difference for the root position to adjust to the previous depth
-	return eval + (s.evalByDepth[toDepth] - s.evalByDepth[fromDepth])
+	return eval //+ (s.evalByDepth[toDepth] - s.evalByDepth[fromDepth])
 }
 
 // Construct a pv string from the pv line, where available, defaulting to just the bet move otherwise

@@ -18,6 +18,12 @@ const BlackCheckMateEval EvalCp = -math.MaxInt16 // don't use MinInt16 cos it's 
 const MyCheckMateEval EvalCp = math.MaxInt16
 const YourCheckMateEval EvalCp = -math.MaxInt16 // don't use MinInt16 cos it's not symmetrical with MaxInt16
 
+// Checkmate at depth N is represented by the eval N away from absolute checkmate val
+func isCheckmateEval(eval EvalCp) bool {
+	return eval <= YourCheckMateEval + MaxDepth ||
+		eval >= MyCheckMateEval - MaxDepth
+}
+
 // Used to mark transposition (hash) tables entries as invalid
 const InvalidEval EvalCp = math.MinInt16
 
@@ -324,6 +330,11 @@ func StaticEvalOrderN(board *dragon.Board) EvalCp {
 	endgameEval := endgameVal(board)
 
 	orderNEval := pawnExtrasEval + kingProtectionEval + bishopPairEval + endgameEval
+
+	if true {
+		orderNEval = kingProtectionEval + bishopPairEval
+		//orderNEval = EvalCp(0)
+	}
 
 	// Clamp it to the absolute bounds
 	if orderNEval > MaxAbsStaticEvalOrderN {
