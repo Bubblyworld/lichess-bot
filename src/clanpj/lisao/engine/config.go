@@ -15,12 +15,12 @@ const (
 var SearchAlgorithm = NegAlphaBeta
 var SearchDepth = 7          // Ignored now that time control is implemented
 var SearchCutoffPercent = 30 // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
-var HeurUseNullMove = false //true
+var HeurUseNullMove = true
 var HeurUseLMR = false //true
 var UseEarlyMoveHint = true  // Try the hint move before doing movegen
 var UseMoveOrdering = true
 var UseIDMoveHint = true
-var MinIDMoveHintDepth = 3
+var MinIDMoveHintDepth = 2
 var UseKillerMoves = true
 var UseDeepKillerMoves = true // only valid if UseKillerMoves == true
 var UseTT = false //true

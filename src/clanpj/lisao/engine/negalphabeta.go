@@ -38,20 +38,20 @@ func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp
 }
 
 // Return null-move eval
-func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, pNullOrLMR bool, eval0 EvalCp, isInCheck bool) EvalCp {
+func (s *SearchT) nullMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, pNullOrLMR bool, pIsFirstMove bool, eval0 EvalCp, isInCheck bool) EvalCp {
 	// Default to returning alpha (as always)
 	nullMoveEval := YourCheckMateEval
 	
 	if HeurUseNullMove {
-		const nullMoveDepthSkip = 3 // must be odd to cope with our even/odd ply eval instability
+		const nullMoveDepthSkip = 2 // must be odd to cope with our even/odd ply eval instability
 		// Try null-move - but never 2 null moves in a row, and never in check otherwise king gets captured
-		if !isInCheck && !pNullOrLMR && beta != MyCheckMateEval {
+		if !isInCheck && !pNullOrLMR && !pIsFirstMove && beta != MyCheckMateEval && depthToGo >= 4/*nullMoveDepthSkip*/ {
 			// Use piece count to determine end-game for zugzwang avoidance - TODO improve this
 			nNonPawns := bits.OnesCount64((s.board.Bbs[dragon.White][dragon.All] & ^s.board.Bbs[dragon.White][dragon.Pawn]) | (s.board.Bbs[dragon.Black][dragon.All] & ^s.board.Bbs[dragon.Black][dragon.Pawn]))
 			// Proceed with null-move heuristic if there are at least 4 non-pawn pieces (note the count includes the two kings)
 			if nNonPawns >= 6 {
 				unapply := s.board.ApplyNullMove()
-				_, possibleNullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove, true, -eval0, dummyPvLine)
+				_, possibleNullMoveEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot+1, -beta, -alpha, NoMove, true, true, -eval0, dummyPvLine)
 				possibleNullMoveEval = -possibleNullMoveEval // back to our perspective
 				unapply()
 				
@@ -257,11 +257,13 @@ func widenBeta(beta EvalCp, pad EvalCp) EvalCp {
 var MaxD0DM1EvalDiff = -1000000
 var MinD0DM1EvalDiff = 1000000
 var NodesD0 = 0
+var NodesDM1 = 0
+var NodesD0FullWidth = 0
 var NodesD0NegDiff = 0
 
 const MaxD0DM1EvalDiffEstimate = EvalCp(100)
 
-// Leaf node eval at extra depth for balanced eval
+// Node eval at depth 1
 func (s *SearchT) NegAlphaBetaDepthM1(depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp) (dragon.Move, EvalCp) {
 	killerMove := NoMove
 	if UseKillerMoves {
@@ -303,15 +305,9 @@ done:
 			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.Killers, &s.stats.DeepKillers)
 		}
 
-		// Widen beta to cope with even/odd ply raw eval discrepancies
-		// We don't have to widen alpha here, since the DM1 eval is expected to be greater than the D0 eval (except for zugzwang which we ignore).
-		//betaDM1 := widenBeta(beta, MaxD0DM1EvalDiffEstimate/2)
-		//alphaDM1 := alpha
-
-		alphaDM1 := YourCheckMateEval
-		betaDM1 := MyCheckMateEval
-
 		for i, move := range legalMoves {
+			NodesDM1++
+			
 			// Make the move
 			s.board.MakeMove(move, &boardSave)
 			// Add to the move history
@@ -327,7 +323,7 @@ done:
 				s.stats.PosRepetitions++
 				eval = DrawEval
 			} else {
-				childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -betaDM1, -alphaDM1, childKiller, childEval0)
+				childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childKiller, childEval0)
 			}
 			eval = -eval // back to our perspective
 
@@ -337,21 +333,21 @@ done:
 			s.board.Restore(&boardSave)
 
 			if(false) {
-				fmt.Printf("                           %smove %s alpha %6d beta %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &move, alphaDM1, betaDM1, eval)
+				fmt.Printf("                           %smove %s alpha %6d beta %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &move, alpha, beta, eval)
 			}
 
-						// Maximise our eval.
+			// Maximise our eval.
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 			if eval > bestEvalM1 {
 				bestEvalM1, bestMoveM1 = eval, move
 			}
 
-			if alphaDM1 < bestEvalM1 {
-				alphaDM1 = bestEvalM1
+			if alpha < bestEvalM1 {
+				alpha = bestEvalM1
 			}
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-			if alphaDM1 >= betaDM1 {
+			if alpha >= beta {
 				// beta cut-off
 				if bestMoveM1 == killerMove {
 					s.stats.KillerCuts++
@@ -369,7 +365,7 @@ done:
 		}
 
 		// If we didn't get a beta cut-off then we visited all children.
-		if bestEvalM1 < betaDM1 {
+		if bestEvalM1 < beta {
 			s.stats.AllChildrenNodes++
 		}
 		s.deepKillers[depthFromRoot] = bestMoveM1
@@ -380,148 +376,20 @@ done:
 
 // Leaf node eval
 func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp) (dragon.Move, EvalCp) {
-	// Widen alpha to cope with even/odd ply raw eval discrepancies
-	// We don't have to widen beta here, since the DM1 eval is expected to be greater than the D0 eval by tempo (except for zugzwang which we ignore).
-	//alphaD0 := widenAlpha(alpha, MaxD0DM1EvalDiffEstimate/2)
-	alphaD0 := YourCheckMateEval
-	betaD0 := MyCheckMateEval
+	NodesD0++
 	
 	// Quiessence eval at this node
-	bestMoveD0, rawEvalD0, _ := s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, alphaD0, betaD0, killer, eval0)
-
-	// If the D0 eval is a beta cut, then we can cut immediately, since the DM1 eval is expected to be greater than the D0 eval by tempo
-	// if beta <= rawEvalD0 {
-	// 	return bestMoveD0, rawEvalD0
-	// }
-
-	// If the D0 eval is an alpha cut at the widened alphaD0, then we can cut immediately at the original alpha, since the DM1 eval is not expected to be larger enough to compensate
-	// if rawEvalD0 <= alphaD0 {
-	// 	softAlphaCut := widenBeta(alphaD0, MaxD0DM1EvalDiffEstimate/2)
-	// 	if alpha < softAlphaCut {
-	// 		softAlphaCut = alpha
-	// 	}
-	// 	return bestMoveD0, softAlphaCut
-	// }
+	bestMoveD0, rawEvalD0, _ := s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, alpha, beta, killer, eval0)
 
 	// Early out checkmate
 	if isCheckmateEval(rawEvalD0) {
 		return bestMoveD0, rawEvalD0
 	}
 
-	// Search eval 1 ply deeper - a basic AB loop
+	// alphaDM1 := YourCheckMateEval
+	// betaDM1 := MyCheckMateEval
 
-// 	killerMove := NoMove
-// 	if UseKillerMoves {
-// 		killerMove = killer
-// 	}
-// 	deepKiller := NoMove
-// 	if UseDeepKillerMoves {
-// 		deepKiller = s.deepKillers[depthFromRoot]
-// 	}
-		
-// 	// Maximise eval with beta cut-off
-// 	bestMoveM1 := NoMove
-// 	bestEvalM1 := YourCheckMateEval
-// 	childKiller := NoMove
-
-// 	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
-// done:
-// 	for once := true; once; once = false {
-// 		var boardSave dragon.BoardSaveT
-
-// 		// Generate all legal moves
-// 		legalMoves, _ := s.board.GenerateLegalMoves2(false /*all moves*/)
-
-// 		// Check for checkmate or stalemate
-// 		if len(legalMoves) == 0 {
-// 			s.stats.Mates++
-// 			bestMoveM1, bestEvalM1 = NoMove, negaMateEval(s.board, depthFromRoot) // TODO use isInCheck
-
-// 			break done
-// 		}
-
-// 		// Sort the moves heuristically
-// 		if UseMoveOrdering {
-// 			if len(legalMoves) > 1 {
-// 				orderMoves(s.board, legalMoves, NoMove, killerMove, deepKiller, &s.stats.Killers, &s.stats.DeepKillers)
-// 			}
-// 		} else if UseKillerMoves {
-// 			// Place killer-move (or deep killer move) first if it's there
-// 			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.Killers, &s.stats.DeepKillers)
-// 		}
-
-// 		// Widen beta to cope with even/odd ply raw eval discrepancies
-// 		// We don't have to widen alpha here, since the DM1 eval is expected to be greater than the D0 eval (except for zugzwang which we ignore).
-// 		//betaDM1 := widenBeta(beta, MaxD0DM1EvalDiffEstimate/2)
-// 		//alphaDM1 := alpha
-
-// 		alphaDM1 := YourCheckMateEval
-// 		betaDM1 := MyCheckMateEval
-
-// 		for i, move := range legalMoves {
-// 			// Make the move
-// 			s.board.MakeMove(move, &boardSave)
-// 			// Add to the move history
-// 			repetitions := s.ht.Add(s.board.Hash())
-			
-// 			childEval0 := NegaStaticEvalOrder0Fast(s.board, -eval0, &boardSave)
-			
-// 			// Get the (deep) eval
-// 			var eval EvalCp
-// 			// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
-// 			// This reduces the search tree a bit and is common practice in chess engines.
-// 			if UsePosRepetition && repetitions > 1 {
-// 				s.stats.PosRepetitions++
-// 				eval = DrawEval
-// 			} else {
-// 				childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -betaDM1, -alphaDM1, childKiller, childEval0)
-// 			}
-// 			eval = -eval // back to our perspective
-
-// 			// Remove from the move history
-// 			s.ht.Remove(s.board.Hash())
-// 			// Take back the move
-// 			s.board.Restore(&boardSave)
-
-// 			if(false) {
-// 				fmt.Printf("                           %smove %s alpha %6d beta %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &move, alphaDM1, betaDM1, eval)
-// 			}
-
-// 						// Maximise our eval.
-// 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
-// 			if eval > bestEvalM1 {
-// 				bestEvalM1, bestMoveM1 = eval, move
-// 			}
-
-// 			if alphaDM1 < bestEvalM1 {
-// 				alphaDM1 = bestEvalM1
-// 			}
-
-// 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-// 			if alphaDM1 >= betaDM1 {
-// 				// beta cut-off
-// 				if bestMoveM1 == killerMove {
-// 					s.stats.KillerCuts++
-// 				} else if bestMoveM1 == deepKiller {
-// 					s.stats.DeepKillerCuts++
-// 				}
-// 				if i == 0 {
-// 					s.stats.FirstChildCuts++
-// 					if depthFromRoot < MaxDepthStats {
-// 						s.stats.FirstChildCutsAt[depthFromRoot]++
-// 					}
-// 				}
-// 				break
-// 			}
-// 		}
-
-// 		// If we didn't get a beta cut-off then we visited all children.
-// 		if bestEvalM1 < betaDM1 {
-// 			s.stats.AllChildrenNodes++
-// 		}
-// 		s.deepKillers[depthFromRoot] = bestMoveM1
-// 	} // end of fake run-once loop
-
+	// Search eval 1 extra ply
 	bestMoveM1, bestEvalM1 := s.NegAlphaBetaDepthM1(depthFromRoot, alpha, beta, killer, eval0)
 	
 	// Early out checkmate
@@ -529,12 +397,29 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 		return bestMoveM1, bestEvalM1
 	}
 
+	// If the depth 0 and depth 1 results lie in the same ranges, then we're done.
+	// If not, then we need to re-evaluate with wider bounds.
+	if rawEvalD0 <= alpha && alpha < bestEvalM1 ||
+		rawEvalD0 < beta && beta <= bestEvalM1 ||
+		bestEvalM1 <= alpha && alpha < rawEvalD0 ||
+		bestEvalM1 < beta && beta <= rawEvalD0 {
+
+		NodesD0FullWidth++
+
+		// TODO can do much better than this
+		
+		// Quiessence eval at this node
+		bestMoveD0, rawEvalD0, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, YourCheckMateEval, MyCheckMateEval, killer, eval0)
+		
+		// Search eval 1 extra ply
+		bestMoveM1, bestEvalM1 = s.NegAlphaBetaDepthM1(depthFromRoot, YourCheckMateEval, MyCheckMateEval, killer, eval0)
+	}
+
 	bestMove := bestMoveM1
 	if bestMove == NoMove {
 		bestMove = bestMoveD0
 	}
 
-	NodesD0++
 	d0DM1EvalDiff := int(bestEvalM1) - int(rawEvalD0)
 	if d0DM1EvalDiff < MinD0DM1EvalDiff {
 		MinD0DM1EvalDiff = d0DM1EvalDiff
@@ -554,7 +439,7 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 }
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
-func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, pNullOrLMR bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
+func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, pNullOrLMR bool, pIsFirstMove bool, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
 
 	// Sanity check the eval0
 	if false {
@@ -611,9 +496,10 @@ done:
 
 		// Null-move heuristic.
 		// Note we miss stalemate here, but that should be a vanishingly small case
-		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, pNullOrLMR, eval0, isInCheck)
+		nullMoveEval := s.nullMove(depthToGo, depthFromRoot, alpha, beta, pNullOrLMR, pIsFirstMove,  -eval0, isInCheck)
 		bestEval, bestMove, alpha = updateEval(bestEval, bestMove, alpha, nullMoveEval, NoMove, nil, nil)
 		// Did null-move heuristic already provide a cut?
+		// TODO - I'm not sure we want to raise alpha using null move ever!
 		if alpha >= beta {
 			s.stats.NullMoveCuts++
 			break done
@@ -637,11 +523,16 @@ done:
 			// idGap := EvalCp(12 - depthToGo/2)
 			// if idGap < minIdGap { idGap = minIdGap }
 			idGap := EvalCp(5) // best at depth 12 at start pos but it's quite sensitive
-			idAlpha := alpha
-			if YourCheckMateEval + idGap < idAlpha { idAlpha -= idGap }
-			idBeta := beta
-			if idBeta < MyCheckMateEval - idGap { idBeta += idGap }
-			idMove, _ := s.NegAlphaBeta(depthToGo-2, depthFromRoot, idAlpha, idBeta, killer, pNullOrLMR, eval0, dummyPvLine)
+			idAlpha := widenAlpha(alpha, idGap)
+			idBeta := widenBeta(beta, idGap)
+			depthSkip := 2
+			if depthToGo >= 5/*MinIDMoveHintDepth*/ {
+				depthSkip = 3
+				if depthToGo >= 9 {
+					depthSkip = 4
+				}
+			}
+			idMove, _ := s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, idAlpha, idBeta, killer, pNullOrLMR, pIsFirstMove/*???*/, eval0, dummyPvLine)
 			if idMove != NoMove {
 				ttMove = idMove
 			}
@@ -650,7 +541,7 @@ done:
 		// TODO also use killer moves, but need to check them first for validity
 		hintMove := ttMove
 		// We don't do null-window or depth-reduction for the first child
-		firstMove := true
+		isFirstMove := true
 
 		// Try hint move before doing move-gen if we have a known valid move hint
 		if UseEarlyMoveHint {
@@ -671,7 +562,7 @@ done:
 					s.stats.PosRepetitions++
 					eval = DrawEval
 				} else {
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0, pvLine)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, isFirstMove, childEval0, pvLine)
 				}
 				eval = -eval // back to our perspective
 				// Remove from the move history
@@ -681,7 +572,7 @@ done:
 
 				//fmt.Printf("                           %smove %s alpha %6d beta %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &hintMove, alpha, beta, eval)
 				
-				firstMove = false
+				isFirstMove = false
 
 				// Bail cleanly without polluting search results if we have timed out
 				if depthToGo > 1 && isTimedOut(s.timeout) {
@@ -759,34 +650,25 @@ done:
 			} else {
 				eval = -alpha-1
 				// LMR and null window probe - don't bother if we're on the PV
-				if !firstMove {
+				if !isFirstMove {
 					// Late Move Reduction - null-window probe at reduced depth with heuristicly wider alpha
-					if !pNullOrLMR {
-
-						// depth-4 probe
-						lmrAlphaPad := EvalCp(60-depthToGo)
-						if lmrAlphaPad < 40 {
-							lmrAlphaPad = EvalCp(40)
+					if HeurUseLMR && !pNullOrLMR && depthToGo >= 4 {
+						// LMR probe
+						lmrAlphaPad := EvalCp(60-10*depthToGo)
+						if lmrAlphaPad < 15 {
+							lmrAlphaPad = EvalCp(15)
 						}
-						if YourCheckMateEval + lmrAlphaPad <= alpha && false && 9 <= depthToGo {
-							lmrAlpha := alpha - lmrAlphaPad
-							childKiller, eval = s.NegAlphaBeta(depthToGo-5, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, true, childEval0, dummyPvLine)
-							// If LMR probe fails to raise lmrAlpha then avoid full depth probe by fiddling eval appropriately
-							if eval > -lmrAlpha-1 {
-								eval = -alpha
-							} else {
-								eval = -alpha-1
+						depthSkip := 2
+						if depthToGo >= 7 {
+							depthSkip = 3
+							if depthToGo >= 11 {
+								depthSkip = 4
 							}
 						}
 						
-						// depth-2 probe
-						lmrAlphaPad = EvalCp(60-2*depthToGo)
-						if lmrAlphaPad < 35 {
-							lmrAlphaPad = EvalCp(35)
-						}
-						if eval < -alpha && YourCheckMateEval + lmrAlphaPad <= alpha && /*false &&*/ 5 <= depthToGo {
-							lmrAlpha := alpha - lmrAlphaPad
-							childKiller, eval = s.NegAlphaBeta(depthToGo-3, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, true, childEval0, dummyPvLine)
+						if eval < -alpha {
+							lmrAlpha := widenAlpha(alpha, lmrAlphaPad)
+							childKiller, eval = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childKiller, true, isFirstMove, childEval0, dummyPvLine)
 							// If LMR probe fails to raise lmrAlpha then avoid full depth probe by fiddling eval appropriately
 							if eval > -lmrAlpha-1 {
 								eval = -alpha
@@ -796,16 +678,29 @@ done:
 						}
 					}
 					
-					// Null window probe (PV-search) - don't bother if the LMR probe failed or we're already in a null window
-					if eval < -alpha && beta <= alpha+1 {
+					// Null window probe (PV-search) with aggressive null/lmr - don't bother if the LMR probe failed
+					const nwAlphaPad = EvalCp(5)
+					if eval < -alpha {
+						nwAlpha := widenAlpha(alpha, nwAlphaPad)
 						// TODO(rpj) pvLine???
-						childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, childEval0, dummyPvLine)
+						childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -nwAlpha-1, -nwAlpha, childKiller, false, false, childEval0, dummyPvLine)
+						if eval > -nwAlpha-1 {
+							eval = -alpha
+						} else {
+							eval = -alpha-1
+						}
 					}
 				}
-				
-				if -beta <= eval && eval < -alpha {
+
+				// If we get here then we might have a new PV, so treat this as the 'first move'
+				if eval < -alpha && alpha < beta-1/*ignore if it's already a null window*/ {
+					// Null window probe
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childKiller, false, true, childEval0, dummyPvLine)
+				}
+					
+				if eval < -alpha {
 					// Full search
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, childEval0, pvLine)
+					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, false, true, childEval0, pvLine)
 				}
 			}
 			eval = -eval // back to our perspective
@@ -817,7 +712,7 @@ done:
 			// Take back the move
 			s.board.Restore(&boardSave)
 
-			firstMove = false
+			isFirstMove = false
 
 			// Bail cleanly without polluting search results if we have timed out
 			if depthToGo > 1 && isTimedOut(s.timeout) {
