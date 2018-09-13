@@ -331,9 +331,9 @@ func StaticEvalOrderN(board *dragon.Board) EvalCp {
 
 	orderNEval := pawnExtrasEval + kingProtectionEval + bishopPairEval + endgameEval
 
-	if false {
-		orderNEval = pawnExtrasEval + kingProtectionEval + bishopPairEval
-		//orderNEval = EvalCp(0)
+	if true {
+		//orderNEval = pawnExtrasEval + kingProtectionEval + bishopPairEval
+		orderNEval = EvalCp(0)
 	}
 
 	// Clamp it to the absolute bounds

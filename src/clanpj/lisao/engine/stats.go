@@ -7,6 +7,8 @@ type SearchStatsT struct {
 	FirstChildCuts    uint64 // #non-leaf nodes that (beta-)cut on the first child searched
 	AllChildrenNodes  uint64 // #non-leaf nodes with no beta cut
 	NullMoveCuts      uint64 // #nodes that cut due to null move heuristic
+	FalsePosNullMoveCuts uint64 // #nodes that cut due to null move heuristic but shouln't have
+	FalseNegNullMoveCuts uint64 // #nodes that cut but null-move didn't
 	Killers           uint64 // #nodes with killer move available
 	ValidHintMoves    uint64 // #nodes with a known valid move before we do movegen - either a TT hit or a known valid killer move
 	HintMoveCuts      uint64 // #nodes with hint move cut (before movegen)

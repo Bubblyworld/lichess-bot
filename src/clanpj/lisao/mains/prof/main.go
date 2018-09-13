@@ -18,6 +18,8 @@ var VersionString = "0.0eg Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOAR
 const Fine70Fen = "8/k7/3p4/p2P1p2/P2P1P2/8/8/K7 w - -"
 const RandomFen = "r4k2/pp1b1p1Q/3pp1n1/7R/4P3/1B3q2/P1P1N3/1K6 b - - 0 1"
 
+const NullMoveFalsePositive = "rnbqkbnr/1ppppppp/p7/8/3P4/5N2/PPP1PPPP/RNBQKB1R b KQkq d3 0 2" // dToGo 3 alpha -18 beta -17 null-eval -4 eval -20
+
 var p = [][2]string { {"a", "b"} }
 
 var CcrFens = [][2]string {
@@ -52,18 +54,19 @@ func doFen(fen string, descr string) {
 	fmt.Printf("%s [%s]\n", fen, descr)
 	fmt.Println()
 	board := dragon.ParseFen(fen)
-	uciSearch(&board, 10, 0)
+	uciSearch(&board, 3, 0, /*-18*/1000+engine.YourCheckMateEval, /*-17*/-1000+engine.MyCheckMateEval)
 	//fmt.Println("#nodes-d0", engine.NodesD0, "#full-width", engine.NodesD0FullWidth, "#neg", engine.NodesD0NegDiff, "#nodes-dm1", engine.NodesDM1, "Max d0/dm1 eval diff", engine.MaxD0DM1EvalDiff, "Min d0/dm1 eval diff", engine.MinD0DM1EvalDiff)
 }
 
 func main() {
 	defer profile.Start().Stop()
-	//doFen(dragon.Startpos)
+	//doFen(dragon.Startpos, "starting pos")
+	doFen(NullMoveFalsePositive, "null move false positive")
 	//doFen(Fine70Fen)
 	//doFen(RandomFen)
-	for _, fenDescr := range CcrFens {
-		doFen(fenDescr[0], fenDescr[1])
-	}
+	// for _, fenDescr := range CcrFens {
+	// 	doFen(fenDescr[0], fenDescr[1])
+	// }
 }
 
 func perC(n uint64, N uint64) string {
@@ -84,7 +87,7 @@ var timeoutTimer *time.Timer
 
 // Lightweight wrapper around Lisao Search.
 // Prints the results (bestmove) and various stats.
-func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
+func uciSearch(board *dragon.Board, depth int, timeoutMs int, alpha engine.EvalCp, beta engine.EvalCp) {
 	// Reset the timeout
 	atomic.StoreUint32(&timeout, 0)
 
@@ -92,7 +95,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	start := time.Now()
 
 	// Search for the winning move!
-	bestMove, eval, stats, finalDepth, _, _ := engine.Search(board, ht, depth, timeoutMs, &timeout)
+	bestMove, eval, stats, finalDepth, _, _ := engine.Search2(board, ht, depth, timeoutMs, &timeout, alpha, beta)
 
 	elapsedSecs := time.Since(start).Seconds()
 
@@ -119,7 +122,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	fmt.Println()
 	fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-all-nodes:", perC(stats.QAllChildrenNodes, stats.QNonLeafs), "q-1st-child-cuts:", perC(stats.QFirstChildCuts, stats.QNonLeafs), "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
 	fmt.Println()
-	fmt.Println("info string   "/*moves:", stats.Moves, "simple-moves:", perC(stats.SimpleMoves, stats.Moves), "simple-captures:", perC(stats.SimpleCaptures, stats.Moves), "move-gens:", perC(stats.MoveGens, stats.NonLeafs)*/, "null-cuts:", perC(stats.NullMoveCuts, stats.NonLeafs), "valid-hint-moves:", perC(stats.ValidHintMoves, stats.NonLeafs), /*"early-killers:", perC(stats.EarlyKillers, stats.NonLeafs), "valid-early-killers:", perC(stats.ValidEarlyKillers, stats.NonLeafs),*/ "hint-move-cuts:", perC(stats.HintMoveCuts, stats.NonLeafs), "mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	fmt.Println("info string   "/*moves:", stats.Moves, "simple-moves:", perC(stats.SimpleMoves, stats.Moves), "simple-captures:", perC(stats.SimpleCaptures, stats.Moves), "move-gens:", perC(stats.MoveGens, stats.NonLeafs)*/, "null-cuts:", perC(stats.NullMoveCuts, stats.NonLeafs), "bad-null-cuts:", perC(stats.FalsePosNullMoveCuts, stats.NullMoveCuts), "valid-hint-moves:", perC(stats.ValidHintMoves, stats.NonLeafs), /*"early-killers:", perC(stats.EarlyKillers, stats.NonLeafs), "valid-early-killers:", perC(stats.ValidEarlyKillers, stats.NonLeafs),*/ "hint-move-cuts:", perC(stats.HintMoveCuts, stats.NonLeafs), "mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
 	if engine.UseTT {
 		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-deeper-hits:", perC(stats.TTDeeperHits, stats.NonLeafs), "tt-beta-cuts:", perC(stats.TTBetaCuts, stats.NonLeafs), "tt-alpha-cuts:", perC(stats.TTAlphaCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
 	}

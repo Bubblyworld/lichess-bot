@@ -113,6 +113,10 @@ func absEvalCp(eval EvalCp) EvalCp {
 //   we reckon there is not enough time to do the full next-level search.
 // Return best-move, eval, stats, final-depth, pv, error
 func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, []dragon.Move, error) {
+	return Search2(board, ht, depth, targetTimeMs, timeout, YourCheckMateEval, MyCheckMateEval)
+}
+
+func Search2(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, timeout *uint32, alpha EvalCp, beta EvalCp) (dragon.Move, EvalCp, SearchStatsT, int, []dragon.Move, error) {
 	var deepKillers [MaxDepth]dragon.Move
 	var evalByDepth [MaxDepth]EvalCp
 	var stats SearchStatsT
@@ -161,7 +165,7 @@ func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, 
 			eval0 := NegaStaticEvalOrder0(board)
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, YourCheckMateEval, MyCheckMateEval, fullBestMove, false, true, eval0, pvLine)
+			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, alpha, beta, fullBestMove, eval0, pvLine)
 			eval = negaEval
 			if board.Colortomove == dragon.Black {
 				eval = -negaEval
