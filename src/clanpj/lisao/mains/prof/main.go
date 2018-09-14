@@ -54,19 +54,19 @@ func doFen(fen string, descr string) {
 	fmt.Printf("%s [%s]\n", fen, descr)
 	fmt.Println()
 	board := dragon.ParseFen(fen)
-	uciSearch(&board, 3, 0, /*-18*/1000+engine.YourCheckMateEval, /*-17*/-1000+engine.MyCheckMateEval)
+	uciSearch(&board, 10, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
 	//fmt.Println("#nodes-d0", engine.NodesD0, "#full-width", engine.NodesD0FullWidth, "#neg", engine.NodesD0NegDiff, "#nodes-dm1", engine.NodesDM1, "Max d0/dm1 eval diff", engine.MaxD0DM1EvalDiff, "Min d0/dm1 eval diff", engine.MinD0DM1EvalDiff)
 }
 
 func main() {
 	defer profile.Start().Stop()
 	//doFen(dragon.Startpos, "starting pos")
-	doFen(NullMoveFalsePositive, "null move false positive")
+	//doFen(NullMoveFalsePositive, "null move false positive")
 	//doFen(Fine70Fen)
 	//doFen(RandomFen)
-	// for _, fenDescr := range CcrFens {
-	// 	doFen(fenDescr[0], fenDescr[1])
-	// }
+	for _, fenDescr := range CcrFens {
+		doFen(fenDescr[0], fenDescr[1])
+	}
 }
 
 func perC(n uint64, N uint64) string {

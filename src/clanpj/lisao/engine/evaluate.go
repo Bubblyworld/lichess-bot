@@ -319,6 +319,8 @@ func StaticEvalOrder0(board *dragon.Board) EvalCp {
 // TODO - work out what sensible clamp bounds are.
 const MaxAbsStaticEvalOrderN = EvalCp(500)
 
+const EVAL0_ONLY = false
+
 // Expensive part - O(n) even with delta eval - of static eval from white's perspective.
 func StaticEvalOrderN(board *dragon.Board) EvalCp {
 
@@ -331,8 +333,7 @@ func StaticEvalOrderN(board *dragon.Board) EvalCp {
 
 	orderNEval := pawnExtrasEval + kingProtectionEval + bishopPairEval + endgameEval
 
-	if true {
-		//orderNEval = pawnExtrasEval + kingProtectionEval + bishopPairEval
+	if EVAL0_ONLY {
 		orderNEval = EvalCp(0)
 	}
 
