@@ -452,7 +452,7 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 	return bestMoveD0, EvalCp((int(rawEvalD0) + int(bestEvalM1) + (int(bestEvalM1)&1))/2)
 }
 
-const DEBUG_EVAL0 = true
+const DEBUG_EVAL0 = false
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
 func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
@@ -499,9 +499,6 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	bestEval := YourCheckMateEval
 	childKiller := NoMove
 
-	// TODO just here for stats
-	var bakNullMoveEval = YourCheckMateEval
-
 	// Maintain the PV line - 1 extra element for NoMove cropping with tt hit
 	pvLine := make([]dragon.Move, depthToGo+1)
 
@@ -516,7 +513,6 @@ done:
 		// Null-move heuristic.
 		// Note we miss stalemate here, but that should be a vanishingly small case
 		nullMoveEval := s.nullMoveEval(depthToGo, depthFromRoot, alpha, beta, eval0, isInCheck)
-		bakNullMoveEval = nullMoveEval
 		// We don't use the null-move eval to raise alpha because it's only null-window probe around beta in the null-move code, not a full [alpha, beta] window
 		if beta <= nullMoveEval {
 			bestEval, alpha = nullMoveEval, nullMoveEval
@@ -758,21 +754,6 @@ done:
 		}
 		s.deepKillers[depthFromRoot] = bestMove
 	} // end of fake run-once loop
-
-	// null-move stats - TODO scrap
-	if origAlpha < bestEval && bestEval < origBeta && bestEval < bakNullMoveEval {
-		s.stats.BetterNullMoveCuts++
-		if DEBUG { fmt.Println("               Null Move Better", s.board.ToFen(), "dToGo", depthToGo, "alpha", origAlpha, "beta", origBeta, "null-eval", bakNullMoveEval, "eval", bestEval) }
-	}
-	if origBeta <= bakNullMoveEval {
-		s.stats.NullMoveCuts++
-		if bestEval < origBeta {
-			if DEBUG { fmt.Println("               Null False Pos", s.board.ToFen(), "dToGo", depthToGo, "alpha", origAlpha, "beta", origBeta, "null-eval", bakNullMoveEval, "eval", bestEval) }
-			s.stats.FalsePosNullMoveCuts++
-		}
-	} else if origBeta <= bestEval {
-		s.stats.FalseNegNullMoveCuts++
-	}
 
 	// Update the TT - but only if the search was not truncated due to a time-out
 	if !isTimedOut(s.timeout) {
