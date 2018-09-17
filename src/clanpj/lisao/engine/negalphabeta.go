@@ -56,24 +56,23 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 				}
 			}
 			unapply := s.board.ApplyNullMove()
-			// TODO - we could use a null-window probe here (-beta+1) but then we can't use the null-move eval to raise alpha
-			nullMoveBestResponse, nullMoveEval = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot+1, -beta, -alpha/*-beta+1*/, NoMove, eval0, dummyPvLine)
+			// We use a null-window probe here (-beta+1) but then we can't use the null-move eval to raise alpha
+			nullMoveBestResponse, nullMoveEval = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot+1, -beta, -beta+1, NoMove, -eval0, dummyPvLine)
 			nullMoveEval = -nullMoveEval // back to our perspective
 			unapply()
 			
 			if(DEBUG) { fmt.Printf("                           %snull-move response %s alpha %6d beta %6d eval0 %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &nullMoveBestResponse, alpha, beta, eval0, nullMoveEval) }
 			
-			// Sanity check with shallow search
-			// _, shallowEval := s.NegAlphaBeta(depthToGo-nullMoveDepthSkip, depthFromRoot, -beta, -beta+1, NoMove, eval0, dummyPvLine)
-			// if shallowEval < nullMoveEval {
-			// 	nullMoveEval = shallowEval
-			// }
+			// Sanity check for zugzwang with shallow search to same depth as null-move search
+			if nullMoveEval <= beta {
+				_, shallowEval := s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, -beta, -beta+1, NoMove, eval0, dummyPvLine)
+				if shallowEval < nullMoveEval {
+					nullMoveEval = shallowEval
+				}
+			}
 		}
 	}
 
-	// TODO - check for non-zugzwang by doing a depth-reduced search
-
-	// Bail cleanly without polluting search results if we have timed out
 	return nullMoveEval
 }
 
@@ -453,7 +452,7 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 	return bestMoveD0, EvalCp((int(rawEvalD0) + int(bestEvalM1) + (int(bestEvalM1)&1))/2)
 }
 
-const DEBUG_EVAL0 = false
+const DEBUG_EVAL0 = true
 
 // Return the best eval attainable through alpha-beta from the given position (with killer-move hint), along with the move leading to the principal variation.
 func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
@@ -516,9 +515,9 @@ done:
 
 		// Null-move heuristic.
 		// Note we miss stalemate here, but that should be a vanishingly small case
-		nullMoveEval := s.nullMoveEval(depthToGo, depthFromRoot, alpha, beta,  -eval0, isInCheck)
+		nullMoveEval := s.nullMoveEval(depthToGo, depthFromRoot, alpha, beta, eval0, isInCheck)
 		bakNullMoveEval = nullMoveEval
-		// TODO - we could raise alpha with the null-move eval, even if there's no cut, but NOT if we do a null-window probe around beta in the null-move code
+		// We don't use the null-move eval to raise alpha because it's only null-window probe around beta in the null-move code, not a full [alpha, beta] window
 		if beta <= nullMoveEval {
 			bestEval, alpha = nullMoveEval, nullMoveEval
 			s.stats.NullMoveCuts++
@@ -762,6 +761,7 @@ done:
 
 	// null-move stats - TODO scrap
 	if origAlpha < bestEval && bestEval < origBeta && bestEval < bakNullMoveEval {
+		s.stats.BetterNullMoveCuts++
 		if DEBUG { fmt.Println("               Null Move Better", s.board.ToFen(), "dToGo", depthToGo, "alpha", origAlpha, "beta", origBeta, "null-eval", bakNullMoveEval, "eval", bestEval) }
 	}
 	if origBeta <= bakNullMoveEval {

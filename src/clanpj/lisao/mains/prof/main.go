@@ -54,7 +54,7 @@ func doFen(fen string, descr string) {
 	fmt.Printf("%s [%s]\n", fen, descr)
 	fmt.Println()
 	board := dragon.ParseFen(fen)
-	uciSearch(&board, 10, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
+	uciSearch(&board, 8, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
 	//fmt.Println("#nodes-d0", engine.NodesD0, "#full-width", engine.NodesD0FullWidth, "#neg", engine.NodesD0NegDiff, "#nodes-dm1", engine.NodesDM1, "Max d0/dm1 eval diff", engine.MaxD0DM1EvalDiff, "Min d0/dm1 eval diff", engine.MinD0DM1EvalDiff)
 }
 
@@ -122,7 +122,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int, alpha engine.EvalC
 	fmt.Println()
 	fmt.Println("info string q-nodes:", stats.QNodes, "q-non-leafs:", stats.QNonLeafs, "q-all-nodes:", perC(stats.QAllChildrenNodes, stats.QNonLeafs), "q-1st-child-cuts:", perC(stats.QFirstChildCuts, stats.QNonLeafs), "q-pats:", perC(stats.QPats, stats.QNonLeafs), "q-quiesced:", perC(stats.QQuiesced, stats.QNonLeafs), "q-prunes:", perC(stats.QPrunes, stats.QNonLeafs))
 	fmt.Println()
-	fmt.Println("info string   "/*moves:", stats.Moves, "simple-moves:", perC(stats.SimpleMoves, stats.Moves), "simple-captures:", perC(stats.SimpleCaptures, stats.Moves), "move-gens:", perC(stats.MoveGens, stats.NonLeafs)*/, "null-cuts:", perC(stats.NullMoveCuts, stats.NonLeafs), "bad-null-cuts:", perC(stats.FalsePosNullMoveCuts, stats.NullMoveCuts), "valid-hint-moves:", perC(stats.ValidHintMoves, stats.NonLeafs), /*"early-killers:", perC(stats.EarlyKillers, stats.NonLeafs), "valid-early-killers:", perC(stats.ValidEarlyKillers, stats.NonLeafs),*/ "hint-move-cuts:", perC(stats.HintMoveCuts, stats.NonLeafs), "mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
+	fmt.Println("info string   "/*moves:", stats.Moves, "simple-moves:", perC(stats.SimpleMoves, stats.Moves), "simple-captures:", perC(stats.SimpleCaptures, stats.Moves), "move-gens:", perC(stats.MoveGens, stats.NonLeafs)*/, "null-cuts:", perC(stats.NullMoveCuts, stats.NonLeafs), "bad-null-cuts:", perC(stats.FalsePosNullMoveCuts, stats.NullMoveCuts), "better-null-evals:", perC(stats.BetterNullMoveCuts, stats.NonLeafs), "valid-hint-moves:", perC(stats.ValidHintMoves, stats.NonLeafs), /*"early-killers:", perC(stats.EarlyKillers, stats.NonLeafs), "valid-early-killers:", perC(stats.ValidEarlyKillers, stats.NonLeafs),*/ "hint-move-cuts:", perC(stats.HintMoveCuts, stats.NonLeafs), "mates:", perC(stats.Mates, stats.NonLeafs), "killers:", perC(stats.Killers, stats.NonLeafs), "killer-cuts:", perC(stats.KillerCuts, stats.NonLeafs), "deep-killers:", perC(stats.DeepKillers, stats.NonLeafs), "deep-killer-cuts:", perC(stats.DeepKillerCuts, stats.NonLeafs))
 	if engine.UseTT {
 		fmt.Println("info string   tt-hits:", perC(stats.TTHits, stats.NonLeafs), "tt-depth-hits:", perC(stats.TTDepthHits, stats.NonLeafs), "tt-deeper-hits:", perC(stats.TTDeeperHits, stats.NonLeafs), "tt-beta-cuts:", perC(stats.TTBetaCuts, stats.NonLeafs), "tt-alpha-cuts:", perC(stats.TTAlphaCuts, stats.NonLeafs), "tt-late-cuts:", perC(stats.TTLateCuts, stats.NonLeafs), "tt-true-evals:", perC(stats.TTTrueEvals, stats.NonLeafs))
 	}
