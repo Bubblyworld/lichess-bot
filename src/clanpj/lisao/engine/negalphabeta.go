@@ -36,6 +36,37 @@ func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp
 	return bestEval, bestMove, alpha
 }
 
+// Do a shallow search to get a best move
+func (s *SearchT) getShallowBestMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp) dragon.Move {
+	shallowBestMove := NoMove
+	
+	if UseIDMoveHint && depthToGo >= 3/*MinIDMoveHintDepth*/ { // Empirically doing depth 1 probe at skip 1 is worse; ditto depth 2 at skip 2
+		// Get the best move for a search of depth-2. TODO
+		// We go 2 plies shallower since our eval is unstable between odd/even plies.
+		// The result is effectively the (possibly new) ttMove.
+		// We weaken the alpha and beta bounds bit to get a more accurate best-move (particularly in null-windows).
+		// const minIdGap = EvalCp(5)
+		// idGap := EvalCp(12 - depthToGo/2)
+		// if idGap < minIdGap { idGap = minIdGap }
+		idGap := EvalCp(5) // best at depth 12 at start pos but it's quite sensitive
+		idAlpha := widenAlpha(alpha, idGap)
+		idBeta := widenBeta(beta, idGap)
+		depthSkip := 1
+		if depthToGo >= 2 {
+			depthSkip = 2
+			if depthToGo >= 3/*MinIDMoveHintDepth*/ {
+				depthSkip = 3
+				if depthToGo >= 7 {
+					depthSkip = 4
+				}
+			}
+		}
+		shallowBestMove, _ = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, idAlpha, idBeta, killer, eval0, dummyPvLine)
+	}
+
+	return shallowBestMove
+}
+
 // Return true iff we get a beta cut from null-move heuristic.
 func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, eval0 EvalCp, isInCheck bool) EvalCp {
 	// Default to returning alpha (as always)
@@ -535,29 +566,10 @@ done:
 		if UseDeepKillerMoves {
 			deepKiller = s.deepKillers[depthFromRoot]
 		}
-		
-		if UseIDMoveHint && depthToGo >= MinIDMoveHintDepth {
-			// Get the best move for a search of depth-2.
-			// We go 2 plies shallower since our eval is unstable between odd/even plies.
-			// The result is effectively the (possibly new) ttMove.
-			// We weaken the alpha and beta bounds bit to get a more accurate best-move (particularly in null-windows).
-			// const minIdGap = EvalCp(5)
-			// idGap := EvalCp(12 - depthToGo/2)
-			// if idGap < minIdGap { idGap = minIdGap }
-			idGap := EvalCp(5) // best at depth 12 at start pos but it's quite sensitive
-			idAlpha := widenAlpha(alpha, idGap)
-			idBeta := widenBeta(beta, idGap)
-			depthSkip := 2
-			if depthToGo >= 5/*MinIDMoveHintDepth*/ {
-				depthSkip = 3
-				if depthToGo >= 9 {
-					depthSkip = 4
-				}
-			}
-			idMove, _ := s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, idAlpha, idBeta, killer, eval0, dummyPvLine)
-			if idMove != NoMove {
-				ttMove = idMove
-			}
+
+		shallowBestMove := s.getShallowBestMove(depthToGo, depthFromRoot, alpha, beta, killer, eval0)
+		if shallowBestMove != NoMove {
+			ttMove = shallowBestMove // TODO replacing the TT move is a bit odd
 		}
 		
 		// TODO also use killer moves, but need to check them first for validity
