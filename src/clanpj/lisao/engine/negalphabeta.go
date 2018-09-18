@@ -498,6 +498,7 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	bestMove := NoMove
 	bestEval := YourCheckMateEval
 	childKiller := NoMove
+	isFirstMove := true
 
 	// Maintain the PV line - 1 extra element for NoMove cropping with tt hit
 	pvLine := make([]dragon.Move, depthToGo+1)
@@ -513,6 +514,12 @@ done:
 		// Null-move heuristic.
 		// Note we miss stalemate here, but that should be a vanishingly small case
 		nullMoveEval := s.nullMoveEval(depthToGo, depthFromRoot, alpha, beta, eval0, isInCheck)
+
+		// Bail cleanly without polluting search results if we have timed out
+		if depthToGo > 1 && isTimedOut(s.timeout) {
+			break done
+		}
+
 		// We don't use the null-move eval to raise alpha because it's only null-window probe around beta in the null-move code, not a full [alpha, beta] window
 		if beta <= nullMoveEval {
 			bestEval, alpha = nullMoveEval, nullMoveEval
@@ -582,6 +589,8 @@ done:
 				s.ht.Remove(s.board.Hash())
 				// Take back the move
 				s.board.Restore(&boardSave)
+
+				isFirstMove = false
 
 				if(DEBUG) { fmt.Printf("                           %smove %s alpha %6d beta %6d eval0 %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &hintMove, alpha, beta, eval0, eval) }
 				
@@ -661,14 +670,12 @@ done:
 			} else {
 				eval = -alpha-1
 				
-				// LMR and null window probe
-
-				// Late Move Reduction - null-window probe at reduced depth with heuristicly wider alpha
-				if HeurUseLMR && depthToGo >= 4 {
+				// Late Move Reduction (LMR) - null-window probe at reduced depth with heuristicly wider alpha
+				if HeurUseLMR && !isFirstMove && depthToGo >= 4 {
 					// LMR probe
 					lmrAlphaPad := EvalCp(60-10*depthToGo)
-					if lmrAlphaPad < 15 {
-						lmrAlphaPad = EvalCp(15)
+					if lmrAlphaPad < 20 {
+						lmrAlphaPad = EvalCp(20)
 					}
 					depthSkip := 2
 					if depthToGo >= 7 {
@@ -709,6 +716,8 @@ done:
 			s.ht.Remove(s.board.Hash())
 			// Take back the move
 			s.board.Restore(&boardSave)
+
+			isFirstMove = false
 
 			// Bail cleanly without polluting search results if we have timed out
 			if depthToGo > 1 && isTimedOut(s.timeout) {
