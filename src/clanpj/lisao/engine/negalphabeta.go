@@ -40,7 +40,7 @@ func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp
 func (s *SearchT) getShallowBestMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp) dragon.Move {
 	shallowBestMove := NoMove
 	
-	if UseIDMoveHint && depthToGo >= 3/*MinIDMoveHintDepth*/ { // Empirically doing depth 1 probe at skip 1 is worse; ditto depth 2 at skip 2
+	if UseIDMoveHint && depthToGo >= 2/*MinIDMoveHintDepth*/ { // Empirically doing depth 1 probe at skip 1 is worse; ditto depth 2 at skip 2
 		// Get the best move for a search of depth-2. TODO
 		// We go 2 plies shallower since our eval is unstable between odd/even plies.
 		// The result is effectively the (possibly new) ttMove.
