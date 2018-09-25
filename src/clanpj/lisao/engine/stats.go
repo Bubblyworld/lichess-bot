@@ -20,8 +20,6 @@ type SearchStatsT struct {
 	DeepCutNodeChildren uint64 // Total #children of cut nodes at least MinIDMoveHintDepth from leaf
 	AllChildrenNodes  uint64 // #non-leaf nodes with no beta cut
 	Killers           uint64 // #nodes with killer move available
-	ValidHintMoves    uint64 // #nodes with a known valid move before we do movegen - either a TT hit or a known valid killer move
-	HintMoveCuts      uint64 // #nodes with hint move cut (before movegen)
 	KillerCuts        uint64 // #nodes with killer move cut
 	KillerCutsNotDK   uint64 // #nodes with killer move cut that's not the deep-killer move
 	DeepKillers       uint64 // #nodes with deep killer move available
@@ -82,7 +80,7 @@ func (s *SearchStatsT) Dump(finalDepth int) {
 	fmt.Println()
 	fmt.Println("info string q-nodes:", s.QNodes, "q-non-leafs:", s.QNonLeafs, "q-all-nodes:", PerC(s.QAllChildrenNodes, s.QNonLeafs), "q-1st-child-cuts:", PerC(s.QFirstChildCuts, s.QNonLeafs), "q-pats:", PerC(s.QPats, s.QNonLeafs), "q-quiesced:", PerC(s.QQuiesced, s.QNonLeafs), "q-prunes:", PerC(s.QPrunes, s.QNonLeafs))
 	fmt.Println()
-	fmt.Println("info string   "/*moves:", s.Moves, "simple-moves:", PerC(s.SimpleMoves, s.Moves), "simple-captures:", PerC(s.SimpleCaptures, s.Moves), "move-gens:", PerC(s.MoveGens, s.NonLeafs)*/, "null-cuts:", PerC(s.NullMoveCuts, s.NonLeafs), "valid-hint-moves:", PerC(s.ValidHintMoves, s.NonLeafs), /*"early-killers:", PerC(s.EarlyKillers, s.NonLeafs), "valid-early-killers:", PerC(s.ValidEarlyKillers, s.NonLeafs),*/ "hint-move-cuts:", PerC(s.HintMoveCuts, s.NonLeafs), "mates:", PerC(s.Mates, s.NonLeafs), "killers:", PerC(s.Killers, s.NonLeafs), "killer-cuts:", PerC(s.KillerCuts, s.NonLeafs), "deep-killers:", PerC(s.DeepKillers, s.NonLeafs), "deep-killer-cuts:", PerC(s.DeepKillerCuts, s.NonLeafs))
+	fmt.Println("info string   null-cuts:", PerC(s.NullMoveCuts, s.NonLeafs), "mates:", PerC(s.Mates, s.NonLeafs), "killers:", PerC(s.Killers, s.NonLeafs), "killer-cuts:", PerC(s.KillerCuts, s.NonLeafs), "deep-killers:", PerC(s.DeepKillers, s.NonLeafs), "deep-killer-cuts:", PerC(s.DeepKillerCuts, s.NonLeafs))
 	fmt.Println("            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	fmt.Println("info string   cuts:", PerC(s.CutNodes, s.NonLeafs), "null-cuts:", PerC(s.NullMoveCuts, s.CutNodes), "first-child-cuts:", PerC(s.FirstChildCuts, s.CutNodes), "cut-kids", PerC(s.CutNodeChildren, s.CutNodes-s.NullMoveCuts), "shallow-cut-kids", PerC(s.ShallowCutNodeChildren, s.ShallowCutNodes-s.ShallowNullMoveCuts), "deep-cut-kids", PerC(s.DeepCutNodeChildren, s.DeepCutNodes-s.DeepNullMoveCuts), "tt-move-cuts:", PerC(s.TTMoveCuts, s.CutNodes-s.NullMoveCuts), "killer-cuts:", PerC(s.KillerCuts, s.CutNodes-s.NullMoveCuts), "deep-killer-cuts:", PerC(s.DeepKillerCuts, s.CutNodes-s.NullMoveCuts), "tt-move-cuts-not-kdk:", PerC(s.TTMoveCutsNotKDK, s.CutNodes-s.NullMoveCuts), "killer-cuts-not-dk:", PerC(s.KillerCutsNotDK, s.CutNodes-s.NullMoveCuts), "deep-killer-cuts-not-k:", PerC(s.DeepKillerCutsNotK, s.CutNodes-s.NullMoveCuts))
 	fmt.Println("            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")

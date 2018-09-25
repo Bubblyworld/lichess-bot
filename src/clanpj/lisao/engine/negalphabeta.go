@@ -521,7 +521,7 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	// Maintain the PV line - 1 extra element for NoMove cropping with tt hit
 	pvLine := make([]dragon.Move, depthToGo+1)
 
-	// Anything after here interacts with the QTT - so single return location at the end of the func after writing back to QTT
+	// Anything after here interacts with the TT - so single return location at the end of the func after writing back to TT
 	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
 done:
 	for once := true; once; once = false {
@@ -555,67 +555,6 @@ done:
 			ttMove = shallowBestMove // TODO replacing the TT move is a bit odd
 		}
 		
-		// TODO (RPJ) also use killer moves, but need to check them first for validity
-		hintMove := ttMove
-
-		// Try hint move before doing move-gen if we have a known valid move hint
-		if UseEarlyMoveHint {
-			if hintMove != NoMove {
-				s.stats.ValidHintMoves++
-				// Make the move
-				s.board.MakeMove(hintMove, &boardSave)
-				// Add to the move history
-				repetitions := s.ht.Add(s.board.Hash())
-
-				childEval0 := NegaStaticEvalOrder0Fast(s.board, -eval0, &boardSave)
-				
-				// Get the (deep) eval
-				var eval EvalCp
-				// We consider 2-fold repetition to be a draw, since if a repeat can be forced then it can be forced again.
-				// This reduces the search tree a bit and is common practice in chess engines.
-				if UsePosRepetition && repetitions > 1 {
-					s.stats.PosRepetitions++
-					eval = DrawEval
-				} else {
-					childKiller, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childKiller, childEval0, pvLine)
-				}
-				eval = -eval // back to our perspective
-				// Remove from the move history
-				s.ht.Remove(s.board.Hash())
-				// Take back the move
-				s.board.Restore(&boardSave)
-
-				nChildrenVisited++
-
-				if(DEBUG) { fmt.Printf("                           %smove %s alpha %6d beta %6d eval0 %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &hintMove, alpha, beta, eval0, eval) }
-				
-				// Bail cleanly without polluting search results if we have timed out
-				if isTimedOut(s.timeout) {
-					break done
-				}
-
-				// Maximise our eval.
-				// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
-				if eval > bestEval {
-					bestEval, bestMove = eval, hintMove
-				}
-
-				if alpha < bestEval {
-					alpha = bestEval
-					// Update the PV line
-					pvLine[0] = hintMove
-					copy(ppvLine[1:], pvLine)
-				}
-
-				// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
-				if alpha >= beta {
-					// beta cut-off
-					s.stats.HintMoveCuts++
-					break done
-				}
-			}
-		}
-
 		// Generate all legal moves
 		legalMoves, _ := s.board.GenerateLegalMoves2(false /*all moves*/)
 
@@ -626,7 +565,6 @@ done:
 
 			break done
 		}
-
 
 		// Sort the moves heuristically
 		if UseKillerMoves {
@@ -645,11 +583,6 @@ done:
 		}
 
 		for _, move := range legalMoves {
-			// Don't repeat the hintMove
-			if UseEarlyMoveHint && move == hintMove {
-				continue
-			}
-
 			// Make the move
 			s.board.MakeMove(move, &boardSave)
 			// Add to the move history
