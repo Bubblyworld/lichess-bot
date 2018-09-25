@@ -58,6 +58,8 @@ func doFen(fen string, descr string) {
 
 	// reset the history table
 	ht = make(engine.HistoryTableT)
+	// reset the killer move table
+	kt = emptyKt
 	// reset the TT
 	engine.ResetTT()
 	// reset the qsearch TT
@@ -80,6 +82,9 @@ func main() {
 // This MUST be per-search-thread but for now we're single-threaded so global is fine.
 var ht engine.HistoryTableT = make(engine.HistoryTableT)
 
+var emptyKt engine.KillerMoveTableT
+var kt engine.KillerMoveTableT
+
 // We use a shared variable using golang sync mechanisms for atomic shared operation.
 // When timeOut != 0 then we bail on the search.
 // The time-out is typically controled by a Timer, except when in infinite search mode,
@@ -99,7 +104,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int, alpha engine.EvalC
 	start := time.Now()
 
 	// Search for the winning move!
-	bestMove, eval, stats, finalDepth, _, _ := engine.Search2(board, ht, depth, timeoutMs, &timeout, alpha, beta)
+	bestMove, eval, stats, finalDepth, _, _ := engine.Search2(board, ht, &kt, depth, timeoutMs, &timeout, alpha, beta)
 
 	elapsedSecs := time.Since(start).Seconds()
 

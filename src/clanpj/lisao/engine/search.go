@@ -42,6 +42,7 @@ const MaxOddEvenEvalDiff = EvalCp(50)
 type SearchT struct {
 	board       *dragon.Board
 	ht          HistoryTableT
+	kt          *KillerMoveTableT
 	deepKillers []dragon.Move
 	evalByDepth []EvalCp
 	stats       *SearchStatsT
@@ -54,10 +55,11 @@ func (s *SearchT) deepTtMinDepth() int {
 	return s.depth/2
 }
 
-func NewSearchT(board *dragon.Board, ht HistoryTableT, deepKillers []dragon.Move, evalByDepth []EvalCp, stats *SearchStatsT, timeout *uint32, oddEvenEvalDiff EvalCp) *SearchT {
+func NewSearchT(board *dragon.Board, ht HistoryTableT, kt *KillerMoveTableT, deepKillers []dragon.Move, evalByDepth []EvalCp, stats *SearchStatsT, timeout *uint32, oddEvenEvalDiff EvalCp) *SearchT {
 	return &SearchT{
 		board:       board,
 		ht:          ht,
+	        kt:          kt,
 		deepKillers: deepKillers,
 		evalByDepth: evalByDepth,
 		stats:       stats,
@@ -112,11 +114,11 @@ func absEvalCp(eval EvalCp) EvalCp {
 // If targetTimeMs != 0 then we try to limit tame waste by returning early from a full search at some depth when
 //   we reckon there is not enough time to do the full next-level search.
 // Return best-move, eval, stats, final-depth, pv, error
-func Search(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, []dragon.Move, error) {
-	return Search2(board, ht, depth, targetTimeMs, timeout, YourCheckMateEval, MyCheckMateEval)
+func Search(board *dragon.Board, ht HistoryTableT, kt *KillerMoveTableT, depth int, targetTimeMs int, timeout *uint32) (dragon.Move, EvalCp, SearchStatsT, int, []dragon.Move, error) {
+	return Search2(board, ht, kt, depth, targetTimeMs, timeout, YourCheckMateEval, MyCheckMateEval)
 }
 
-func Search2(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int, timeout *uint32, alpha EvalCp, beta EvalCp) (dragon.Move, EvalCp, SearchStatsT, int, []dragon.Move, error) {
+func Search2(board *dragon.Board, ht HistoryTableT, kt *KillerMoveTableT, depth int, targetTimeMs int, timeout *uint32, alpha EvalCp, beta EvalCp) (dragon.Move, EvalCp, SearchStatsT, int, []dragon.Move, error) {
 	var deepKillers [MaxDepth]dragon.Move
 	var evalByDepth [MaxDepth]EvalCp
 	var stats SearchStatsT
@@ -145,7 +147,7 @@ func Search2(board *dragon.Board, ht HistoryTableT, depth int, targetTimeMs int,
 
 	fmt.Println("info string using", SearchAlgorithmString(), "max depth", maxDepthToGo)
 
-	s := NewSearchT(board, ht, deepKillers[:], evalByDepth[:], &stats, timeout, 50)
+	s := NewSearchT(board, ht, kt, deepKillers[:], evalByDepth[:], &stats, timeout, 50)
 
 	// previous and previous previous depth timings
 	// prevElapsedSecs, pprevElapsedSecs := float64(0), float64(0)

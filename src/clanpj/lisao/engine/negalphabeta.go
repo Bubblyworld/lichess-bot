@@ -309,7 +309,8 @@ func (s *SearchT) NegAlphaBetaDepthM1(depthFromRoot int, alpha EvalCp, beta Eval
 	}
 	deepKiller := NoMove
 	if UseDeepKillerMoves {
-		deepKiller = s.deepKillers[depthFromRoot]
+		//deepKiller = s.deepKillers[depthFromRoot]
+		deepKiller = s.kt.killersForDepth(depthFromRoot)[0]
 	}
 		
 	// Maximise eval with beta cut-off
@@ -397,6 +398,7 @@ done:
 	if bestMoveM1 == NoMove {
 		s.deepKillers[depthFromRoot] = bestMoveM1
 	}
+	s.kt.addKillerMove(bestMoveM1, depthFromRoot)
 	
 	return bestMoveM1, bestEvalM1
 }
@@ -571,7 +573,8 @@ done:
 			killerMove = killer
 		}
 		if UseDeepKillerMoves {
-			deepKiller = s.deepKillers[depthFromRoot]
+			//deepKiller = s.deepKillers[depthFromRoot]
+			deepKiller = s.kt.killersForDepth(depthFromRoot)[0]
 		}
 		if UseMoveOrdering {
 			if len(legalMoves) > 1 {
@@ -686,6 +689,7 @@ done:
 		if bestMove != NoMove {
 			s.deepKillers[depthFromRoot] = bestMove
 		}
+		s.kt.addKillerMove(bestMove, depthFromRoot)
 
 		// Is it a (beta) cut
 		if origBeta <= bestEval {
