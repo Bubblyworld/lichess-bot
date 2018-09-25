@@ -8,22 +8,33 @@ type SearchStatsT struct {
 	Nodes             uint64 // #nodes visited
 	Mates             uint64 // #true terminal nodes
 	NonLeafs          uint64 // #non-leaf nodes
-	FirstChildCuts    uint64 // #non-leaf nodes that (beta-)cut on the first child searched
-	AllChildrenNodes  uint64 // #non-leaf nodes with no beta cut
+	CutNodes          uint64 // #(beta-)cut nodes
 	NullMoveCuts      uint64 // #nodes that cut due to null move heuristic
+	FirstChildCuts    uint64 // #non-leaf nodes that (beta-)cut on the first child searched
+	CutNodeChildren   uint64 // Total #children of cut nodes (in order to see how effective the move ordering is)
+	ShallowCutNodes   uint64 // #(beta-)cut nodes less than MinIDMoveHintDepth from leaf
+	ShallowNullMoveCuts uint64 // #shallow nodes that cut due to null move heuristic
+	ShallowCutNodeChildren uint64 // Total #children of cut nodes less than MinIDMoveHintDepth from leaf
+	DeepCutNodes      uint64 // #(beta-)cut nodes at least MinIDMoveHintDepth from leaf
+	DeepNullMoveCuts  uint64 // #deep nodes that cut due to null move heuristic
+	DeepCutNodeChildren uint64 // Total #children of cut nodes at least MinIDMoveHintDepth from leaf
+	AllChildrenNodes  uint64 // #non-leaf nodes with no beta cut
 	Killers           uint64 // #nodes with killer move available
 	ValidHintMoves    uint64 // #nodes with a known valid move before we do movegen - either a TT hit or a known valid killer move
 	HintMoveCuts      uint64 // #nodes with hint move cut (before movegen)
 	KillerCuts        uint64 // #nodes with killer move cut
+	KillerCutsNotDK   uint64 // #nodes with killer move cut that's not the deep-killer move
 	DeepKillers       uint64 // #nodes with deep killer move available
 	DeepKillerCuts    uint64 // #nodes with deep killer move cut
+	DeepKillerCutsNotK uint64 // #nodes with deep killer move cut that's not the killer move
+	TTMoveCuts        uint64 // #nodes with tt move cut
+	TTMoveCutsNotKDK  uint64 // #nodes with tt move cut that's not the killer or deep-killer move
 	PosRepetitions    uint64 // #nodes with repeated position
 	TTHits            uint64 // #nodes with successful TT probe
 	TTDepthHits       uint64 // #nodes where TT hit was at the same depth
 	TTDeeperHits      uint64 // #nodes where TT hit was deeper (and the same parity)
 	TTBetaCuts        uint64 // #nodes with beta cutoff from TT hit
 	TTAlphaCuts       uint64 // #nodes with alpha cutoff from TT hit
-	TTLateCuts        uint64 // #nodes with beta cutoff from TT hit
 	TTTrueEvals       uint64 // #nodes with QQT hits that are the same depth and are not a lower bound
 	QNodes            uint64 // #nodes visited in qsearch
 	QMates            uint64 // #true terminal nodes in qsearch
@@ -47,7 +58,7 @@ type SearchStatsT struct {
 	QttTrueEvals      uint64 // #qnodes with QQT hits that are the same depth and are not a lower bound
 
 	NonLeafsAt       [MaxDepthStats]uint64  // non-leafs by depth
-	FirstChildCutsAt [MaxDepthStats]uint64  // first-child cuts by depth
+	//FirstChildCutsAt [MaxDepthStats]uint64  // first-child cuts by depth
 	QNonLeafsAt      [MaxQDepthStats]uint64 // q-search non-leafs by depth
 }
 
@@ -72,14 +83,12 @@ func (s *SearchStatsT) Dump(finalDepth int) {
 	fmt.Println("info string q-nodes:", s.QNodes, "q-non-leafs:", s.QNonLeafs, "q-all-nodes:", PerC(s.QAllChildrenNodes, s.QNonLeafs), "q-1st-child-cuts:", PerC(s.QFirstChildCuts, s.QNonLeafs), "q-pats:", PerC(s.QPats, s.QNonLeafs), "q-quiesced:", PerC(s.QQuiesced, s.QNonLeafs), "q-prunes:", PerC(s.QPrunes, s.QNonLeafs))
 	fmt.Println()
 	fmt.Println("info string   "/*moves:", s.Moves, "simple-moves:", PerC(s.SimpleMoves, s.Moves), "simple-captures:", PerC(s.SimpleCaptures, s.Moves), "move-gens:", PerC(s.MoveGens, s.NonLeafs)*/, "null-cuts:", PerC(s.NullMoveCuts, s.NonLeafs), "valid-hint-moves:", PerC(s.ValidHintMoves, s.NonLeafs), /*"early-killers:", PerC(s.EarlyKillers, s.NonLeafs), "valid-early-killers:", PerC(s.ValidEarlyKillers, s.NonLeafs),*/ "hint-move-cuts:", PerC(s.HintMoveCuts, s.NonLeafs), "mates:", PerC(s.Mates, s.NonLeafs), "killers:", PerC(s.Killers, s.NonLeafs), "killer-cuts:", PerC(s.KillerCuts, s.NonLeafs), "deep-killers:", PerC(s.DeepKillers, s.NonLeafs), "deep-killer-cuts:", PerC(s.DeepKillerCuts, s.NonLeafs))
+	fmt.Println("            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	fmt.Println("info string   cuts:", PerC(s.CutNodes, s.NonLeafs), "null-cuts:", PerC(s.NullMoveCuts, s.CutNodes), "first-child-cuts:", PerC(s.FirstChildCuts, s.CutNodes), "cut-kids", PerC(s.CutNodeChildren, s.CutNodes-s.NullMoveCuts), "shallow-cut-kids", PerC(s.ShallowCutNodeChildren, s.ShallowCutNodes-s.ShallowNullMoveCuts), "deep-cut-kids", PerC(s.DeepCutNodeChildren, s.DeepCutNodes-s.DeepNullMoveCuts), "tt-move-cuts:", PerC(s.TTMoveCuts, s.CutNodes-s.NullMoveCuts), "killer-cuts:", PerC(s.KillerCuts, s.CutNodes-s.NullMoveCuts), "deep-killer-cuts:", PerC(s.DeepKillerCuts, s.CutNodes-s.NullMoveCuts), "tt-move-cuts-not-kdk:", PerC(s.TTMoveCutsNotKDK, s.CutNodes-s.NullMoveCuts), "killer-cuts-not-dk:", PerC(s.KillerCutsNotDK, s.CutNodes-s.NullMoveCuts), "deep-killer-cuts-not-k:", PerC(s.DeepKillerCutsNotK, s.CutNodes-s.NullMoveCuts))
+	fmt.Println("            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	if UseTT {
-		fmt.Println("info string   tt-hits:", PerC(s.TTHits, s.NonLeafs), "tt-depth-hits:", PerC(s.TTDepthHits, s.NonLeafs), "tt-deeper-hits:", PerC(s.TTDeeperHits, s.NonLeafs), "tt-beta-cuts:", PerC(s.TTBetaCuts, s.NonLeafs), "tt-alpha-cuts:", PerC(s.TTAlphaCuts, s.NonLeafs), "tt-late-cuts:", PerC(s.TTLateCuts, s.NonLeafs), "tt-true-evals:", PerC(s.TTTrueEvals, s.NonLeafs))
+		fmt.Println("info string   tt-hits:", PerC(s.TTHits, s.NonLeafs), "tt-depth-hits:", PerC(s.TTDepthHits, s.NonLeafs), "tt-deeper-hits:", PerC(s.TTDeeperHits, s.NonLeafs), "tt-beta-cuts:", PerC(s.TTBetaCuts, s.NonLeafs), "tt-alpha-cuts:", PerC(s.TTAlphaCuts, s.NonLeafs), "tt-late-cuts:", PerC(s.TTMoveCuts, s.NonLeafs), "tt-true-evals:", PerC(s.TTTrueEvals, s.NonLeafs))
 	}
-	fmt.Print("info string    1st-child-cuts by depth:")
-	for i := 0; i < MaxDepthStats && i < finalDepth; i++ {
-		fmt.Printf(" %d: %s", i, PerC(s.FirstChildCutsAt[i], s.NonLeafsAt[i]))
-	}
-	fmt.Println()
 	fmt.Print("info string    non-leafs by depth:")
 	for i := 0; i < MaxDepthStats && i < finalDepth; i++ {
 		fmt.Printf(" %d: %s", i, PerC(s.NonLeafsAt[i], s.NonLeafs))

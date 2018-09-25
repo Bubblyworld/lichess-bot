@@ -268,15 +268,15 @@ func isTimedOut(timeout *uint32) bool {
 const ttMoveValue uint8 = 255
 
 // ...then the killer move
-const killerValue uint8 = 254
+const killerValue uint8 = 253 // TODO reverse experiment 254
 
 // ...then the second (deep) killer
-const killer2Value uint8 = 253
+const killer2Value uint8 = 254 // TODO reverse experiment 253
 
 // Indexed by promo piece type - only N, B, R, Q valid
 var promoMOValue = [8]uint8{0, 0 /*N*/, 105 /*B*/, 103 /*R*/, 104 /*Q*/, 109, 0, 0}
 
-// Indexed by [victim][atacker]
+// Indexed by [victim][attacker]
 // Basically MVV-LVA with king attacker rated high(!)
 // TODO play with king ordering, and bishop-vs-knight ordering
 // TODO boost moves that have danger of take-back, e.g. rook takes rook

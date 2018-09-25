@@ -37,24 +37,21 @@ func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp
 }
 
 // Do a shallow search to get a best move
-func (s *SearchT) getShallowBestMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp) dragon.Move {
-	shallowBestMove := NoMove
-	
-	if UseIDMoveHint && depthToGo >= 2/*MinIDMoveHintDepth*/ { // Empirically doing depth 1 probe at skip 1 is worse; ditto depth 2 at skip 2
+func (s *SearchT) getShallowBestMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp, ttMove dragon.Move) dragon.Move {
+	shallowBestMove := ttMove
+
+	if UseIDMoveHint && (UseIDMoveHintAlways || ttMove == NoMove) && depthToGo >= MinIDMoveHintDepth { // Empirically doing depth 1 probe at skip 1 is worse; ditto depth 2 at skip 2
 		// Get the best move for a search of depth-2. TODO
 		// We go 2 plies shallower since our eval is unstable between odd/even plies.
 		// The result is effectively the (possibly new) ttMove.
 		// We weaken the alpha and beta bounds bit to get a more accurate best-move (particularly in null-windows).
-		// const minIdGap = EvalCp(5)
-		// idGap := EvalCp(12 - depthToGo/2)
-		// if idGap < minIdGap { idGap = minIdGap }
-		idGap := EvalCp(5) // best at depth 12 at start pos but it's quite sensitive
+		idGap := EvalCp(5) // best at depth 12 at start pos but it's quite sensitive - TODO (rpj) tune by depthToGo?
 		idAlpha := widenAlpha(alpha, idGap)
 		idBeta := widenBeta(beta, idGap)
 		depthSkip := 1
 		if depthToGo >= 2 {
 			depthSkip = 2
-			if depthToGo >= 3/*MinIDMoveHintDepth*/ {
+			if depthToGo >= 3 {
 				depthSkip = 3
 				if depthToGo >= 7 {
 					depthSkip = 4
@@ -94,8 +91,8 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 			
 			if(DEBUG) { fmt.Printf("                           %snull-move response %s alpha %6d beta %6d eval0 %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &nullMoveBestResponse, alpha, beta, eval0, nullMoveEval) }
 			
-			// Sanity check for zugzwang with shallow search to same depth as null-move search
-			if nullMoveEval <= beta {
+			// If the null-move eval is a beta cut, then sanity check for zugzwang with shallow search to same depth as null-move search
+			if beta <= nullMoveEval {
 				_, shallowEval := s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, -beta, -beta+1, NoMove, eval0, dummyPvLine)
 				if shallowEval < nullMoveEval {
 					nullMoveEval = shallowEval
@@ -336,17 +333,18 @@ done:
 			break done
 		}
 
+		var dummyStats uint64
 		// Sort the moves heuristically
 		if UseMoveOrdering {
 			if len(legalMoves) > 1 {
-				orderMoves(s.board, legalMoves, NoMove, killerMove, deepKiller, &s.stats.Killers, &s.stats.DeepKillers)
+				orderMoves(s.board, legalMoves, NoMove, killerMove, deepKiller, &dummyStats, &dummyStats)
 			}
 		} else if UseKillerMoves {
 			// Place killer-move (or deep killer move) first if it's there
-			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.Killers, &s.stats.DeepKillers)
+			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, s.deepKillers[depthFromRoot], &dummyStats, &dummyStats)
 		}
 
-		for i, move := range legalMoves {
+		for _, move := range legalMoves {
 			NodesDM1++
 			
 			// Make the move
@@ -389,29 +387,17 @@ done:
 
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
-				// beta cut-off
-				if bestMoveM1 == killerMove {
-					s.stats.KillerCuts++
-				} else if bestMoveM1 == deepKiller {
-					s.stats.DeepKillerCuts++
-				}
-				if i == 0 {
-					s.stats.FirstChildCuts++
-					if depthFromRoot < MaxDepthStats {
-						s.stats.FirstChildCutsAt[depthFromRoot]++
-					}
-				}
-				break
+ 				// beta cut-off
+				break done
 			}
 		}
 
-		// If we didn't get a beta cut-off then we visited all children.
-		if bestEvalM1 < beta {
-			s.stats.AllChildrenNodes++
-		}
-		s.deepKillers[depthFromRoot] = bestMoveM1
 	} // end of fake run-once loop
 
+	if bestMoveM1 == NoMove {
+		s.deepKillers[depthFromRoot] = bestMoveM1
+	}
+	
 	return bestMoveM1, bestEvalM1
 }
 
@@ -427,9 +413,6 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 	if isCheckmateEval(rawEvalD0) {
 		return bestMoveD0, rawEvalD0
 	}
-
-	// alphaDM1 := YourCheckMateEval
-	// betaDM1 := MyCheckMateEval
 
 	// Search eval 1 extra ply
 	bestMoveM1, bestEvalM1 := s.NegAlphaBetaDepthM1(depthFromRoot, alpha, beta, killer, eval0)
@@ -524,12 +507,16 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	if ttIsCut {
 		return ttMove, ttEval
 	}
-	
+
+	// Sundry hint moves
+	killerMove := NoMove
+	deepKiller := NoMove
+
 	// Maximise eval with beta cut-off
 	bestMove := NoMove
 	bestEval := YourCheckMateEval
 	childKiller := NoMove
-	isFirstMove := true
+	nChildrenVisited := 0
 
 	// Maintain the PV line - 1 extra element for NoMove cropping with tt hit
 	pvLine := make([]dragon.Move, depthToGo+1)
@@ -546,33 +533,29 @@ done:
 		// Note we miss stalemate here, but that should be a vanishingly small case
 		nullMoveEval := s.nullMoveEval(depthToGo, depthFromRoot, alpha, beta, eval0, isInCheck)
 
-		// Bail cleanly without polluting search results if we have timed out
-		if depthToGo > 1 && isTimedOut(s.timeout) {
+ 		// Bail cleanly without polluting search results if we have timed out
+		if isTimedOut(s.timeout) {
 			break done
 		}
 
 		// We don't use the null-move eval to raise alpha because it's only null-window probe around beta in the null-move code, not a full [alpha, beta] window
 		if beta <= nullMoveEval {
 			bestEval, alpha = nullMoveEval, nullMoveEval
-			s.stats.NullMoveCuts++
 			break done
 		}
 
-		killerMove := NoMove
-		if UseKillerMoves {
-			killerMove = killer
-		}
-		deepKiller := NoMove
-		if UseDeepKillerMoves {
-			deepKiller = s.deepKillers[depthFromRoot]
+		shallowBestMove := s.getShallowBestMove(depthToGo, depthFromRoot, alpha, beta, killer, eval0, ttMove)
+
+		// Bail cleanly without polluting search results if we have timed out
+		if isTimedOut(s.timeout) {
+			break done
 		}
 
-		shallowBestMove := s.getShallowBestMove(depthToGo, depthFromRoot, alpha, beta, killer, eval0)
 		if shallowBestMove != NoMove {
 			ttMove = shallowBestMove // TODO replacing the TT move is a bit odd
 		}
 		
-		// TODO also use killer moves, but need to check them first for validity
+		// TODO (RPJ) also use killer moves, but need to check them first for validity
 		hintMove := ttMove
 
 		// Try hint move before doing move-gen if we have a known valid move hint
@@ -602,12 +585,12 @@ done:
 				// Take back the move
 				s.board.Restore(&boardSave)
 
-				isFirstMove = false
+				nChildrenVisited++
 
 				if(DEBUG) { fmt.Printf("                           %smove %s alpha %6d beta %6d eval0 %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &hintMove, alpha, beta, eval0, eval) }
 				
 				// Bail cleanly without polluting search results if we have timed out
-				if depthToGo > 1 && isTimedOut(s.timeout) {
+				if isTimedOut(s.timeout) {
 					break done
 				}
 
@@ -628,11 +611,6 @@ done:
 				if alpha >= beta {
 					// beta cut-off
 					s.stats.HintMoveCuts++
-					s.stats.FirstChildCuts++
-					if depthFromRoot < MaxDepthStats {
-						s.stats.FirstChildCutsAt[depthFromRoot]++
-					}
-
 					break done
 				}
 			}
@@ -649,17 +627,24 @@ done:
 			break done
 		}
 
+
 		// Sort the moves heuristically
+		if UseKillerMoves {
+			killerMove = killer
+		}
+		if UseDeepKillerMoves {
+			deepKiller = s.deepKillers[depthFromRoot]
+		}
 		if UseMoveOrdering {
 			if len(legalMoves) > 1 {
 				orderMoves(s.board, legalMoves, ttMove, killerMove, deepKiller, &s.stats.Killers, &s.stats.DeepKillers)
 			}
 		} else if UseKillerMoves {
 			// Place killer-move (or deep killer move) first if it's there
-			prioritiseKillerMove(legalMoves, killer, UseDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.Killers, &s.stats.DeepKillers)
+			prioritiseKillerMove(legalMoves, killerMove, UseDeepKillerMoves, deepKiller, &s.stats.Killers, &s.stats.DeepKillers)
 		}
 
-		for i, move := range legalMoves {
+		for _, move := range legalMoves {
 			// Don't repeat the hintMove
 			if UseEarlyMoveHint && move == hintMove {
 				continue
@@ -682,8 +667,8 @@ done:
 			} else {
 				eval = -alpha-1
 				
-				// Late Move Reduction (LMR) - null-window probe at reduced depth with heuristicly wider alpha
-				if HeurUseLMR && !isFirstMove && depthToGo >= 4 {
+				// Late Move Reduction (LMR) - null-window probe at reduced depth with heuristicly wider alpha - never for the first move to avoid depth collapse
+				if HeurUseLMR && nChildrenVisited != 0 && depthToGo >= 4 {
 					// LMR probe
 					lmrAlphaPad := EvalCp(60-10*depthToGo)
 					if lmrAlphaPad < 20 {
@@ -729,12 +714,12 @@ done:
 			// Take back the move
 			s.board.Restore(&boardSave)
 
-			isFirstMove = false
-
 			// Bail cleanly without polluting search results if we have timed out
-			if depthToGo > 1 && isTimedOut(s.timeout) {
-				break
+			if isTimedOut(s.timeout) {
+				break done
 			}
+			
+			nChildrenVisited++
 
 			// Maximise our eval.
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
@@ -752,33 +737,69 @@ done:
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
 				// beta cut-off
-				if bestMove == ttMove {
-					s.stats.TTLateCuts++
-				} else if bestMove == killerMove {
-					s.stats.KillerCuts++
-				} else if bestMove == deepKiller {
-					s.stats.DeepKillerCuts++
-				}
-				if i == 0 {
-					s.stats.FirstChildCuts++
-					if depthFromRoot < MaxDepthStats {
-						s.stats.FirstChildCutsAt[depthFromRoot]++
-					}
-				}
-				break
+				break done
 			}
 		}
 
 		// If we didn't get a beta cut-off then we visited all children.
-		if bestEval <= origBeta {
-			s.stats.AllChildrenNodes++
-		}
-		s.deepKillers[depthFromRoot] = bestMove
+		s.stats.AllChildrenNodes++
+		
 	} // end of fake run-once loop
 
-	// Update the TT - but only if the search was not truncated due to a time-out
+	// Update the TT and stats - but only if the search was not truncated due to a time-out
 	if !isTimedOut(s.timeout) {
 		s.updateTt(depthToGo, origAlpha, origBeta, bestEval, bestMove)
+
+		if bestMove != NoMove {
+			s.deepKillers[depthFromRoot] = bestMove
+		}
+
+		// Is it a (beta) cut
+		if origBeta <= bestEval {
+			s.stats.CutNodes++
+			s.stats.CutNodeChildren += uint64(nChildrenVisited)
+
+			if nChildrenVisited == 0 {
+				s.stats.NullMoveCuts++
+			} else if nChildrenVisited == 1 {
+				s.stats.FirstChildCuts++
+			}
+
+			if depthToGo < MinIDMoveHintDepth {
+				s.stats.ShallowCutNodes++
+				s.stats.ShallowCutNodeChildren += uint64(nChildrenVisited)
+				if nChildrenVisited == 0 {
+					s.stats.ShallowNullMoveCuts++
+				}
+			} else {
+				s.stats.DeepCutNodes++
+				s.stats.DeepCutNodeChildren += uint64(nChildrenVisited)
+				if nChildrenVisited == 0 {
+					s.stats.DeepNullMoveCuts++
+				}
+			}
+
+			if bestMove != NoMove {
+				if bestMove == ttMove {
+					s.stats.TTMoveCuts++
+					if bestMove != killerMove && bestMove != deepKiller {
+						s.stats.TTMoveCutsNotKDK++
+					}
+				}
+				if bestMove == killerMove {
+					s.stats.KillerCuts++
+					if bestMove != deepKiller {
+ 						s.stats.KillerCutsNotDK++
+					}
+				}
+				if bestMove == deepKiller {
+					s.stats.DeepKillerCuts++
+					if bestMove != killerMove {
+						s.stats.DeepKillerCutsNotK++
+					}
+				}
+			}
+		}
 	}
 
 	// Regardless of a time-out this will still be valid - if bestMove == NoMove then we didn't complete any child branch

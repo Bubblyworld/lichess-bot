@@ -53,20 +53,28 @@ func doFen(fen string, descr string) {
 	fmt.Println()
 	fmt.Printf("%s [%s]\n", fen, descr)
 	fmt.Println()
+
 	board := dragon.ParseFen(fen)
-	uciSearch(&board, 12, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
+
+	// reset the history table
+	ht = make(engine.HistoryTableT)
+	// reset the TT
+	engine.ResetTT()
+	// reset the qsearch TT
+	engine.ResetQtt()
+	
+	uciSearch(&board, 10, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
 	//fmt.Println("#nodes-d0", engine.NodesD0, "#full-width", engine.NodesD0FullWidth, "#neg", engine.NodesD0NegDiff, "#nodes-dm1", engine.NodesDM1, "Max d0/dm1 eval diff", engine.MaxD0DM1EvalDiff, "Min d0/dm1 eval diff", engine.MinD0DM1EvalDiff)
 }
 
 func main() {
 	defer profile.Start().Stop()
 	doFen(dragon.Startpos, "starting pos")
-	//doFen(NullMoveFalsePositive, "null move false positive")
 	//doFen(Fine70Fen)
 	//doFen(RandomFen)
-	// for _, fenDescr := range CcrFens {
-	// 	doFen(fenDescr[0], fenDescr[1])
-	// }
+	for _, fenDescr := range CcrFens {
+		doFen(fenDescr[0], fenDescr[1])
+	}
 }
 
 // This MUST be per-search-thread but for now we're single-threaded so global is fine.
