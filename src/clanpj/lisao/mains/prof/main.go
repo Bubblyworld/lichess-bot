@@ -65,7 +65,7 @@ func doFen(fen string, descr string) {
 	// reset the qsearch TT
 	engine.ResetQtt()
 	
-	uciSearch(&board, 10, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
+	uciSearch(&board, 12, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
 	//fmt.Println("#nodes-d0", engine.NodesD0, "#full-width", engine.NodesD0FullWidth, "#neg", engine.NodesD0NegDiff, "#nodes-dm1", engine.NodesDM1, "Max d0/dm1 eval diff", engine.MaxD0DM1EvalDiff, "Min d0/dm1 eval diff", engine.MinD0DM1EvalDiff)
 }
 

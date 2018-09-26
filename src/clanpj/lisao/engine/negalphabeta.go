@@ -305,7 +305,8 @@ const MaxD0DM1EvalDiffEstimate = EvalCp(100)
 func (s *SearchT) NegAlphaBetaDepthM1(depthFromRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp) (dragon.Move, EvalCp) {
 	killerMove := NoMove
 	if UseKillerMoves {
-		killerMove = killer
+		//killerMove = killer
+		killerMove = s.kt.killersForDepth(depthFromRoot)[1]
 	}
 	deepKiller := NoMove
 	if UseDeepKillerMoves {
@@ -570,7 +571,8 @@ done:
 
 		// Sort the moves heuristically
 		if UseKillerMoves {
-			killerMove = killer
+			//killerMove = killer
+			killerMove = s.kt.killersForDepth(depthFromRoot)[1]
 		}
 		if UseDeepKillerMoves {
 			//deepKiller = s.deepKillers[depthFromRoot]
