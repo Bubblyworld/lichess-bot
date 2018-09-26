@@ -167,7 +167,7 @@ func Search2(board *dragon.Board, ht HistoryTableT, kt *KillerMoveTableT, depth 
 			eval0 := NegaStaticEvalOrder0(board)
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, alpha, beta, fullBestMove, eval0, pvLine)
+			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, alpha, beta, eval0, pvLine)
 			eval = negaEval
 			if board.Colortomove == dragon.Black {
 				eval = -negaEval
@@ -206,8 +206,8 @@ func Search2(board *dragon.Board, ht HistoryTableT, kt *KillerMoveTableT, depth 
 			if bestMove == NoMove {
 				fmt.Println("info string no useful result before time-out at depth", depthToGo)
 				break
-			} else if SearchAlgorithm != NegAlphaBeta || !UseKillerMoves {
-				// Only NegAlphaBeta supports a valid partial result and only if UseKillerMoves is enabled
+			} else if SearchAlgorithm != NegAlphaBeta {
+				// Only NegAlphaBeta supports a valid partial result
 				fmt.Println("info string ignoring partial search result - only supported for NegAlphaBeta with UseKillerMoves enabled", depthToGo)
 				break
 			}
@@ -269,11 +269,8 @@ func isTimedOut(timeout *uint32) bool {
 // TT move is prefered to all others
 const ttMoveValue uint8 = 255
 
-// ...then the killer move
-const killerValue uint8 = 253 // TODO reverse experiment 254
-
-// ...then the second (deep) killer
-const killer2Value uint8 = 254 // TODO reverse experiment 253
+// ...then the killer moves
+const killer0Value uint8 = 254
 
 // Indexed by promo piece type - only N, B, R, Q valid
 var promoMOValue = [8]uint8{0, 0 /*N*/, 105 /*B*/, 103 /*R*/, 104 /*Q*/, 109, 0, 0}
@@ -313,25 +310,30 @@ func (mo *byMoValueDesc) Less(i, j int) bool {
 	return mo.values[i] > mo.values[j]
 }
 
-func mvvLvaEvalMoves(board *dragon.Board, moves []dragon.Move, values []uint8, ttMove dragon.Move, killer dragon.Move, killer2 dragon.Move, killersStat *uint64, deepKillersStat *uint64) {
+func mvvLvaEvalMoves(board *dragon.Board, moves []dragon.Move, values []uint8, ttMove dragon.Move, killers []dragon.Move, killersStats []uint64) {
+next_move:
 	for i, move := range moves {
+		// Special heuristic hint moves...
 		if move == ttMove {
 			values[i] = ttMoveValue
-		} else if move == killer {
-			*killersStat++
-			values[i] = killerValue
-		} else if move == killer2 {
-			*deepKillersStat++
-			values[i] = killer2Value
-		} else {
-			from, to := move.From(), move.To()
-			attacker := board.PieceAt(from)
-			// We miss en-passant but it's not worth the effort to do properly
-			victim := board.PieceAt(to)
-			promoPiece := move.Promote()
-
-			values[i] = promoMOValue[promoPiece] + captureMOValue[victim][attacker]
+			continue next_move
 		}
+
+		for j := 0; j < len(killers); j++ {
+			if move == killers[j] {
+				values[i] = killer0Value - uint8(j)
+				killersStats[j]++
+				continue next_move
+			}
+		}
+		// ... otherwise MVV-LVA 
+		from, to := move.From(), move.To()
+		attacker := board.PieceAt(from)
+		// We miss en-passant but it's not worth the effort to do properly
+		victim := board.PieceAt(to)
+		promoPiece := move.Promote()
+		
+		values[i] = promoMOValue[promoPiece] + captureMOValue[victim][attacker]
 	}
 }
 
@@ -342,10 +344,10 @@ func mvvLvaEvalMoves(board *dragon.Board, moves []dragon.Move, values []uint8, t
 // 1. Promotions by promo type
 // 2. MMV-LVA for captures
 //     (most valuable victim first, then least-valuable attacker second)
-func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, killer dragon.Move, killer2 dragon.Move, killersStat *uint64, deepKillersStat *uint64) {
+func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, killers []dragon.Move, killersStats []uint64) {
 	// Value of each move - nothing to do with any other eval, just a local ordering metric
 	values := make([]uint8, len(moves))
-	mvvLvaEvalMoves(board, moves, values, ttMove, killer, killer2, killersStat, deepKillersStat)
+	mvvLvaEvalMoves(board, moves, values, ttMove, killers, killersStats)
 	mo := byMoValueDesc{moves, values}
 	sort.Sort(&mo)
 }
