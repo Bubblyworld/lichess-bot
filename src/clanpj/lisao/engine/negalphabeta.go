@@ -307,7 +307,6 @@ func (s *SearchT) NegAlphaBetaDepthM1(depthFromRoot int, alpha EvalCp, beta Eval
 	// Maximise eval with beta cut-off
 	bestMoveM1 := NoMove
 	bestEvalM1 := YourCheckMateEval
-	childKiller := NoMove
 	nChildrenVisited := 0
 
 	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
@@ -349,7 +348,7 @@ done:
 				s.stats.PosRepetitions++
 				eval = DrawEval
 			} else {
-				childKiller, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childKiller, childEval0)
+				_, eval, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot+1, /*depthFromQRoot*/0, -beta, -alpha, childEval0)
 			}
 			eval = -eval // back to our perspective
 
@@ -383,9 +382,6 @@ done:
 
 	} // end of fake run-once loop
 
-	if bestMoveM1 == NoMove {
-		s.deepKillers[depthFromRoot] = bestMoveM1
-	}
 	s.kt.addKillerMove(bestMoveM1, depthFromRoot)
 	
 	return bestMoveM1, bestEvalM1, nChildrenVisited
@@ -397,7 +393,7 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 	NodesD0++
 	
 	// Quiessence eval at this node
-	bestMoveD0, rawEvalD0, _ := s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, alpha, beta, NoMove/*TODO*/, eval0)
+	bestMoveD0, rawEvalD0, _ := s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, alpha, beta, eval0)
 	if(DEBUG) { fmt.Printf("                             %sD0 move %s alpha %6d beta %6d eval0 %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &bestMoveD0, alpha, beta, eval0, rawEvalD0) }
 
 	// Early out checkmate
@@ -426,7 +422,7 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 		// TODO can do much better than this
 		
 		// Quiessence eval at this node
-		bestMoveD0, rawEvalD0, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, YourCheckMateEval, MyCheckMateEval, NoMove/*TODO*/, eval0)
+		bestMoveD0, rawEvalD0, _ = s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, YourCheckMateEval, MyCheckMateEval, eval0)
 		if(DEBUG) { fmt.Printf("                             %sD0#2 move %s alpha %6d beta %6d eval0 %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &bestMoveD0, alpha, beta, eval0, rawEvalD0) }
 		
 		// Search eval 1 extra ply
@@ -660,9 +656,6 @@ done:
 	if !isTimedOut(s.timeout) {
 		s.updateTt(depthToGo, origAlpha, origBeta, bestEval, bestMove)
 
-		if bestMove != NoMove {
-			s.deepKillers[depthFromRoot] = bestMove
-		}
 		s.kt.addKillerMove(bestMove, depthFromRoot)
 
 		// Is it a (beta) cut

@@ -20,7 +20,6 @@ type SearchStatsT struct {
 	DeepCutNodeChildren uint64 // Total #children of cut nodes at least MinIDMoveHintDepth from leaf
 	AllChildrenNodes  uint64 // #non-leaf nodes with no beta cut
 	TTMoveCuts        uint64 // #nodes with tt move cut
-	TTMoveCutsNotKDK  uint64 // #nodes with tt move cut that's not the killer or deep-killer move
 	PosRepetitions    uint64 // #nodes with repeated position
 	TTHits            uint64 // #nodes with successful TT probe
 	TTDepthHits       uint64 // #nodes where TT hit was at the same depth
@@ -31,18 +30,17 @@ type SearchStatsT struct {
 	QNodes            uint64 // #nodes visited in qsearch
 	QMates            uint64 // #true terminal nodes in qsearch
 	QNonLeafs         uint64 // #non-leaf qnodes
+	QCutNodes         uint64 // #(beta-)cut qnodes
+	QCutNodeChildren  uint64 // Total #children of cut qnodes (in order to see how effective the move ordering is)
 	QFirstChildCuts   uint64 // #non-leaf qnodes that (beta-)cut on the first child searched
 	QAllChildrenNodes uint64 // #non-leaf qnodes with no beta cut
-	QKillers          uint64 // #qnodes with killer move available
-	QKillerCuts       uint64 // #qnodes with killer move cut
-	QDeepKillers      uint64 // #qnodes with deep killer move available
-	QDeepKillerCuts   uint64 // #qnodes with deep killer move cut
 	QRampagePrunes    uint64 // #qnodes where we did queen rampage pruning
 	QPats             uint64 // #qnodes with stand pat best
 	QPatCuts          uint64 // #qnodes with stand pat cut
 	QQuiesced         uint64 // #qnodes where we successfully quiesced
 	QPrunes           uint64 // #qnodes where we reached full depth - i.e. likely failed to quiesce
 	QttHits           uint64 // #qnodes with successful QTT probe
+	QttMoveCuts       uint64 // #qnodes with tt move cut
 	QttDepthHits      uint64 // #qnodes where QTT hit was at the same depth
 	QttBetaCuts       uint64 // #qnodes with beta cutoff from QTT hit
 	QttAlphaCuts      uint64 // #qnodes with beta cutoff from QTT hit
@@ -54,6 +52,9 @@ type SearchStatsT struct {
 
 	Killers           [MaxDepth][NKillersPerDepth]uint64 // #nodes with killer move available
 	KillerCuts        [MaxDepth][NKillersPerDepth]uint64 // #nodes with killer move cut
+
+	QKillers          [MaxDepth][NKillersPerDepth]uint64 // #qnodes with killer move available
+	QKillerCuts       [MaxDepth][NKillersPerDepth]uint64 // #qnodes with killer move cut
 }
 
 func PerC(n uint64, N uint64) string {
@@ -62,10 +63,11 @@ func PerC(n uint64, N uint64) string {
 
 func (s *SearchStatsT) Dump(finalDepth int) {
 	// Reverse order from which it appears in the UCI driver
-	fmt.Println("info string   "/*q-moves:", s.QMoves, "q-simple-moves:", PerC(s.QSimpleMoves, s.QMoves), "q-simple-captures:", PerC(s.QSimpleCaptures, s.QMoves), "q-nomoves:", s.QNoMoves, "q-1moves:", s.Q1Move, "q-movegens:", PerC(s.QMoveGens, s.QNonLeafs)*/, "q-mates:", PerC(s.QMates, s.QNonLeafs), "q-pat-cuts:", PerC(s.QPatCuts, s.QNonLeafs), "q-rampage-prunes:", PerC(s.QRampagePrunes, s.QNonLeafs), "q-killers:", PerC(s.QKillers, s.QNonLeafs), "q-killer-cuts:", PerC(s.QKillerCuts, s.QNonLeafs), "q-deep-killers:", PerC(s.QDeepKillers, s.QNonLeafs), "q-deep-killer-cuts:", PerC(s.QDeepKillerCuts, s.QNonLeafs))
+	fmt.Println("info string   "/*q-moves:", s.QMoves, "q-simple-moves:", PerC(s.QSimpleMoves, s.QMoves), "q-simple-captures:", PerC(s.QSimpleCaptures, s.QMoves), "q-nomoves:", s.QNoMoves, "q-1moves:", s.Q1Move, "q-movegens:", PerC(s.QMoveGens, s.QNonLeafs)*/, "q-mates:", PerC(s.QMates, s.QNonLeafs), "q-pat-cuts:", PerC(s.QPatCuts, s.QNonLeafs), "q-rampage-prunes:", PerC(s.QRampagePrunes, s.QNonLeafs)/*, "q-killers:", PerC(s.QKillers, s.QNonLeafs), "q-killer-cuts:", PerC(s.QKillerCuts, s.QNonLeafs), "q-deep-killers:", PerC(s.QDeepKillers, s.QNonLeafs), "q-deep-killer-cuts:", PerC(s.QDeepKillerCuts, s.QNonLeafs)*/)
 	// if UseEarlyMoveHint {
 	// 	fmt.Println("info string   mv-all:", s.MVAll, "mv-non-king:", PerC(s.MVNonKing, s.MVAll), "mv-ours:", PerC(s.MVOurPiece, s.MVAll), "mv-pawn:", PerC(s.MVPawn, s.MVAll), "mv-pawn-push:", PerC(s.MVPawnPush, s.MVPawn), "mv-pp-ok:", PerC(s.MVPawnPushOk, s.MVPawnPush), "mv-pawnok:", PerC(s.MVPawnOk, s.MVPawn), "mv-nonpawn:", PerC(s.MVNonPawn, s.MVAll), "mv-nonpawn-ok:", PerC(s.MVNonPawnOk, s.MVNonPawn), "mv-disc0:", PerC(s.MVDisc0, s.MVAll), "mv-disc1:", PerC(s.MVDisc1, s.MVAll), "mv-disc2:", PerC(s.MVDisc2, s.MVAll), "mv-disc-no:", PerC(s.MVDiscMaybe, s.MVAll))
 	// }
+	fmt.Println("info string   qcuts:", PerC(s.QCutNodes, s.QNonLeafs), "qpat-cuts:", PerC(s.QPatCuts, s.CutNodes), "qfirst-child-cuts:", PerC(s.QFirstChildCuts, s.CutNodes), "cut-kids", PerC(s.QCutNodeChildren, s.QCutNodes-s.QPatCuts), "qtt-move-cuts:", PerC(s.QttMoveCuts, s.QCutNodes-s.QPatCuts))
 	if UseQSearchTT {
 		fmt.Println("info string   qtt-hits:", PerC(s.QttHits, s.QNonLeafs), "qtt-depth-hits:", PerC(s.QttDepthHits, s.QNonLeafs), "qtt-beta-cuts:", PerC(s.QttBetaCuts, s.QNonLeafs), "qtt-alpha-cuts:", PerC(s.QttAlphaCuts, s.QNonLeafs), "qtt-late-cuts:", PerC(s.QttLateCuts, s.QNonLeafs), "qtt-true-evals:", PerC(s.QttTrueEvals, s.QNonLeafs))
 	}

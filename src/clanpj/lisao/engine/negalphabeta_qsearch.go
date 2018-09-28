@@ -81,7 +81,7 @@ func (s *SearchT) probeQTT(qDepthToGo int, alpha EvalCp, beta EvalCp) (dragon.Mo
 // Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
 // TODO - include moving away from attacks too?
-func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, killer dragon.Move, eval0 EvalCp) (dragon.Move, EvalCp, bool) {
+func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFromQRoot int, alpha EvalCp, beta EvalCp, eval0 EvalCp) (dragon.Move, EvalCp, bool) {
 
 	// Sanity check the eval0
 	if false {
@@ -159,22 +159,9 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 		// Usually same as len(legalMoves) unless we prune the move list, for example queen rampage pruning
 		nMovesToUse := len(legalMoves)
 
-		killerMove := NoMove
-		if UseQKillerMoves {
-			killerMove = killer
-		}
-		deepKiller := NoMove
-		if UseQDeepKillerMoves {
-			deepKiller = s.deepKillers[depthFromRoot]
-		}
-
 		// Sort the moves heuristically
 		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
-			killers := []dragon.Move { killerMove, deepKiller }
-			killersStats := []uint64 { 0, 0 }
-			orderMoves(s.board, legalMoves, qttMove, killers, killersStats)
-			s.stats.QKillers += killersStats[0]
-			s.stats.QDeepKillers += killersStats[1]
+			orderMoves(s.board, legalMoves, qttMove, s.qkt.killersForDepth(depthFromRoot)[:], s.stats.QKillers[depthFromRoot][:])
 			if UseQSearchRampagePruning {
 				nMovesToUse = pruneQueenRampages(s.board, legalMoves, depthFromQRoot, s.stats)
 			}
@@ -183,9 +170,8 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 		// We're quiesced as long as all children (we visit) are quiesced.
 		isQuiesced := true
 
-		childKiller := NoMove
-
 		var boardSave dragon.BoardSaveT
+		nChildrenVisited := 0
 
 		for i := 0; i < nMovesToUse; i++ {
 			move := legalMoves[i]
@@ -217,13 +203,15 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 				
 			} else {
 				var isChildQuiesced bool
-				childKiller, eval, isChildQuiesced = s.QSearchNegAlphaBeta(qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, childKiller, childEval0)
+				_, eval, isChildQuiesced = s.QSearchNegAlphaBeta(qDepthToGo-1, depthFromRoot+1, depthFromQRoot+1, -beta, -alpha, childEval0)
 				isQuiesced = isQuiesced && isChildQuiesced
 			}
 			eval = -eval // back to our perspective
 
 			// Take back the move
 			s.board.Restore(&boardSave)
+
+			nChildrenVisited++
 
 			// Note - this MUST be strictly > because we fail-soft AT the current best evel - beware!
 			if eval > bestEval {
@@ -237,16 +225,6 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 			// Note that this is aggressive, and we fail-soft AT the parent's best eval - be very ware!
 			if alpha >= beta {
 				// beta cut-off
-				if bestMove == qttMove {
-					s.stats.QttLateCuts++
-				} else if bestMove == killerMove {
-					s.stats.QKillerCuts++
-				} else if bestMove == deepKiller {
-					s.stats.QDeepKillerCuts++
-				}
-				if i == 0 {
-					s.stats.QFirstChildCuts++
-				}
 				break
 			}
 		}
@@ -260,8 +238,31 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 		if bestEval <= origBeta {
 			s.stats.QAllChildrenNodes++
 		}
-		s.deepKillers[depthFromRoot] = bestMove
 
+		s.qkt.addKillerMove(bestMove, depthFromRoot)
+
+		// Is it a (beta) cut
+		if origBeta <= bestEval {
+			s.stats.QCutNodes++
+			s.stats.QCutNodeChildren += uint64(nChildrenVisited)
+
+			if nChildrenVisited == 1 {
+				s.stats.QFirstChildCuts++
+			}
+
+			if bestMove != NoMove {
+				if bestMove == qttMove {
+					s.stats.QttMoveCuts++
+				}
+
+				killers := s.qkt.killersForDepth(depthFromRoot)
+				for i := 0; i < NKillersPerDepth; i++ {
+					if bestMove == killers[i] {
+						s.stats.QKillerCuts[depthFromRoot][i]++
+					}
+				}
+			}
+		}
 	}
 
 	if isQuiesced {
