@@ -169,16 +169,15 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 		}
 
 		// Sort the moves heuristically
-		if UseQSearchMoveOrdering {
-			if len(legalMoves) > 1 {
-				orderMoves(s.board, legalMoves, qttMove, killerMove, deepKiller, &s.stats.QKillers, &s.stats.QDeepKillers)
-				if UseQSearchRampagePruning {
-					nMovesToUse = pruneQueenRampages(s.board, legalMoves, depthFromQRoot, s.stats)
-				}
+		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
+			killers := []dragon.Move { killerMove, deepKiller }
+			killersStats := []uint64 { 0, 0 }
+			orderMoves(s.board, legalMoves, qttMove, killers, killersStats)
+			s.stats.QKillers += killersStats[0]
+			s.stats.QDeepKillers += killersStats[1]
+			if UseQSearchRampagePruning {
+				nMovesToUse = pruneQueenRampages(s.board, legalMoves, depthFromQRoot, s.stats)
 			}
-		} else if UseQKillerMoves {
-			// Place killer-move (or deep killer move) first if it's there
-			prioritiseKillerMove(legalMoves, killer, UseQDeepKillerMoves, s.deepKillers[depthFromRoot], &s.stats.QKillers, &s.stats.QDeepKillers)
 		}
 
 		// We're quiesced as long as all children (we visit) are quiesced.

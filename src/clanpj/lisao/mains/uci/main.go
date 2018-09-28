@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0ballmrtt Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0kt Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -41,16 +41,13 @@ func uciLoop() {
 			fmt.Println("option name SearchDepth type spin default", engine.SearchDepth, "min 1 max 1024")
 			fmt.Println("option name SearchCutoffPercent type spin default", engine.SearchCutoffPercent, "min 1 max 100")
 			fmt.Println("option name TimeLeftPerMoveDivisor type spin default", TimeLeftPerMoveDivisor, "min 2 max 200")
-			fmt.Println("option name UseEarlyMoveHint type check default", engine.UseEarlyMoveHint)
 			fmt.Println("option name HeurUseNullMove type check default", engine.HeurUseNullMove)
 			fmt.Println("option name UseMoveOrdering type check default", engine.UseMoveOrdering)
 			fmt.Println("option name UseIDMoveHint type check default", engine.UseIDMoveHint)
 			fmt.Println("option name MinIDMoveHintDepth type spin default", engine.MinIDMoveHintDepth, "min 2 max 1024")
 			fmt.Println("option name UseTT type check default", engine.UseTT)
 			fmt.Println("option name HeurUseTTDeeperHits type check default", engine.HeurUseTTDeeperHits)
-			fmt.Println("option name UseKillerMoves type check default", engine.UseKillerMoves)
 			fmt.Println("option name UsePosRepetition type check default", engine.UsePosRepetition)
-			fmt.Println("option name UseDeepKillerMoves type check default", engine.UseDeepKillerMoves)
 			fmt.Println("option name QSearchDepth type spin default", engine.QSearchDepth, "min 1 max 1024")
 			fmt.Println("option name UseQSearchTT type check default", engine.UseQSearchTT)
 			fmt.Println("option name UseQSearchMoveOrdering type check default", engine.UseQSearchMoveOrdering)
@@ -66,6 +63,8 @@ func uciLoop() {
 			board = dragon.ParseFen(dragon.Startpos)
 			// reset the history table
 			ht = make(engine.HistoryTableT)
+			// reset the killer move table
+			kt = emptyKt
 			// reset the TT
 			engine.ResetTT()
 			// reset the qsearch TT
@@ -116,15 +115,6 @@ func uciLoop() {
 				default:
 					fmt.Println("info string Unrecognised UseMoveOrdering option:", tokens[4])
 				}
-			case "useearlymovehint":
-				switch strings.ToLower(tokens[4]) {
-				case "true":
-					engine.UseEarlyMoveHint = true
-				case "false":
-					engine.UseEarlyMoveHint = false
-				default:
-					fmt.Println("info string Unrecognised UseEarlyMoveHint option:", tokens[4])
-				}
 			case "heurusenullmove":
 				switch strings.ToLower(tokens[4]) {
 				case "true":
@@ -168,15 +158,6 @@ func uciLoop() {
 				default:
 					fmt.Println("info string Unrecognised HeurUseTTDeeperHits option:", tokens[4])
 				}
-			case "usekillermoves":
-				switch strings.ToLower(tokens[4]) {
-				case "true":
-					engine.UseKillerMoves = true
-				case "false":
-					engine.UseKillerMoves = false
-				default:
-					fmt.Println("info string Unrecognised UseKillerMoves option:", tokens[4])
-				}
 			case "useposrepetition":
 				switch strings.ToLower(tokens[4]) {
 				case "true":
@@ -185,15 +166,6 @@ func uciLoop() {
 					engine.UsePosRepetition = false
 				default:
 					fmt.Println("info string Unrecognised UsePosRepetition option:", tokens[4])
-				}
-			case "usedeepkillermoves":
-				switch strings.ToLower(tokens[4]) {
-				case "true":
-					engine.UseDeepKillerMoves = true
-				case "false":
-					engine.UseDeepKillerMoves = false
-				default:
-					fmt.Println("info string Unrecognised UseDeepKillerMoves option:", tokens[4])
 				}
 			case "qsearchdepth":
 				res, err := strconv.Atoi(tokens[4])
@@ -407,6 +379,8 @@ func uciLoop() {
 			}
 			// reset the history map
 			ht = make(engine.HistoryTableT)
+			// reset the killer move table
+			kt = emptyKt
 			if strings.ToLower(posScanner.Text()) == "startpos" {
 				board = dragon.ParseFen(dragon.Startpos)
 				ht.Add(board.Hash()) // record that this state has occurred
@@ -466,6 +440,9 @@ func perC(n uint64, N uint64) string {
 // This MUST be per-search-thread but for now we're single-threaded so global is fine.
 var ht engine.HistoryTableT = make(engine.HistoryTableT)
 
+var emptyKt engine.KillerMoveTableT
+var kt engine.KillerMoveTableT
+
 // We use a shared variable using golang sync mechanisms for atomic shared operation.
 // When timeOut != 0 then we bail on the search.
 // The time-out is typically controled by a Timer, except when in infinite search mode,
@@ -485,7 +462,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	start := time.Now()
 
 	// Search for the winning move!
-	bestMove, eval, stats, finalDepth, pvLine, _ := engine.Search(board, ht, depth, timeoutMs, &timeout)
+	bestMove, eval, stats, finalDepth, pvLine, _ := engine.Search(board, ht, &kt, depth, timeoutMs, &timeout)
 
 	elapsedSecs := time.Since(start).Seconds()
 

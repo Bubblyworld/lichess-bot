@@ -58,12 +58,14 @@ func doFen(fen string, descr string) {
 
 	// reset the history table
 	ht = make(engine.HistoryTableT)
+	// reset the killer move table
+	kt = emptyKt
 	// reset the TT
 	engine.ResetTT()
 	// reset the qsearch TT
 	engine.ResetQtt()
 	
-	uciSearch(&board, 10, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
+	uciSearch(&board, 12, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
 	//fmt.Println("#nodes-d0", engine.NodesD0, "#full-width", engine.NodesD0FullWidth, "#neg", engine.NodesD0NegDiff, "#nodes-dm1", engine.NodesDM1, "Max d0/dm1 eval diff", engine.MaxD0DM1EvalDiff, "Min d0/dm1 eval diff", engine.MinD0DM1EvalDiff)
 }
 
@@ -79,6 +81,9 @@ func main() {
 
 // This MUST be per-search-thread but for now we're single-threaded so global is fine.
 var ht engine.HistoryTableT = make(engine.HistoryTableT)
+
+var emptyKt engine.KillerMoveTableT
+var kt engine.KillerMoveTableT
 
 // We use a shared variable using golang sync mechanisms for atomic shared operation.
 // When timeOut != 0 then we bail on the search.
@@ -99,7 +104,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int, alpha engine.EvalC
 	start := time.Now()
 
 	// Search for the winning move!
-	bestMove, eval, stats, finalDepth, _, _ := engine.Search2(board, ht, depth, timeoutMs, &timeout, alpha, beta)
+	bestMove, eval, stats, finalDepth, _, _ := engine.Search2(board, ht, &kt, depth, timeoutMs, &timeout, alpha, beta)
 
 	elapsedSecs := time.Since(start).Seconds()
 
