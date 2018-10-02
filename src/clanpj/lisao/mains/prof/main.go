@@ -73,11 +73,11 @@ func doFen(fen string, descr string) {
 func main() {
 	defer profile.Start().Stop()
 	doFen(dragon.Startpos, "starting pos")
-	//doFen(Fine70Fen)
+	//doFen(Fine70Fen, "Fine 70 endgame")
 	//doFen(RandomFen)
-	for _, fenDescr := range CcrFens {
-		doFen(fenDescr[0], fenDescr[1])
-	}
+	// for _, fenDescr := range CcrFens {
+	// 	doFen(fenDescr[0], fenDescr[1])
+	// }
 }
 
 // This MUST be per-search-thread but for now we're single-threaded so global is fine.

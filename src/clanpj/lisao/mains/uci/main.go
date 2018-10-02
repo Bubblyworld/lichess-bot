@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0kt Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0tt Pichu 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()
@@ -63,8 +63,9 @@ func uciLoop() {
 			board = dragon.ParseFen(dragon.Startpos)
 			// reset the history table
 			ht = make(engine.HistoryTableT)
-			// reset the killer move table
+			// reset the killer move tables
 			kt = emptyKt
+			qkt = emptyKt
 			// reset the TT
 			engine.ResetTT()
 			// reset the qsearch TT
@@ -379,8 +380,9 @@ func uciLoop() {
 			}
 			// reset the history map
 			ht = make(engine.HistoryTableT)
-			// reset the killer move table
+			// reset the killer move table - TODO (rpj) we should really just shift it up relative to the last position
 			kt = emptyKt
+			qkt = emptyKt
 			if strings.ToLower(posScanner.Text()) == "startpos" {
 				board = dragon.ParseFen(dragon.Startpos)
 				ht.Add(board.Hash()) // record that this state has occurred
@@ -442,6 +444,7 @@ var ht engine.HistoryTableT = make(engine.HistoryTableT)
 
 var emptyKt engine.KillerMoveTableT
 var kt engine.KillerMoveTableT
+var qkt engine.KillerMoveTableT
 
 // We use a shared variable using golang sync mechanisms for atomic shared operation.
 // When timeOut != 0 then we bail on the search.
@@ -462,7 +465,7 @@ func uciSearch(board *dragon.Board, depth int, timeoutMs int) {
 	start := time.Now()
 
 	// Search for the winning move!
-	bestMove, eval, stats, finalDepth, pvLine, _ := engine.Search(board, ht, &kt, depth, timeoutMs, &timeout)
+	bestMove, eval, stats, finalDepth, pvLine, _ := engine.Search(board, ht, &kt, &qkt,  depth, timeoutMs, &timeout)
 
 	elapsedSecs := time.Since(start).Seconds()
 

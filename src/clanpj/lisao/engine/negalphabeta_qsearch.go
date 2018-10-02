@@ -14,60 +14,48 @@ func (s *SearchT) probeQTT(qDepthToGo int, alpha EvalCp, beta EvalCp) (dragon.Mo
 		if isQttHit {
 			s.stats.QttHits++
 
+			qDepthToGoPlus1 := uint8(qDepthToGo+1)
+			
 			//////// First try to find an exact eval at the same depth (or deeper if HeurUseQTTDeeperHits is configured)
 			
-			// Try the lower bound of the same depth parity (it might be exact)
-			qttpLbEntry := &qttEntry.lbEntry
-			// We can use this value if its same depth or deeper (and HeurUseQTTDeeperHits is configured),
+			// We can use the lower bound entry if its same depth or deeper (and HeurUseQTTDeeperHits is configured),
 			//    OR if the QTT entry is a quiesced value
-			qttpLbEntryUseable :=
-				(qttpLbEntry.isQuiesced && (qttpLbEntry.qDepthToGo == uint8(qDepthToGo) || HeurUseQTTDeeperHits)) ||
-				qttpLbEntry.evalType != TTInvalid && (qttpLbEntry.qDepthToGo == uint8(qDepthToGo) || (HeurUseQTTDeeperHits && qttpLbEntry.qDepthToGo > uint8(qDepthToGo)))
-			if qttpLbEntryUseable && qttpLbEntry.evalType == TTEvalExact {
-				s.stats.QttTrueEvals++
-				return qttpLbEntry.bestMove, qttpLbEntry.eval, qttpLbEntry.isQuiesced, true
-			}
+			qttLbEntryUseable :=
+				(qttEntry.lbIsQuiesced && /*why this extra depth condition? looks wrong?*/(qttEntry.lbQDepthToGoPlus1 == qDepthToGoPlus1 || HeurUseQTTDeeperHits)) ||
+				qttEntry.lbQDepthToGoPlus1 == qDepthToGoPlus1 ||
+				(HeurUseQTTDeeperHits && qttEntry.lbQDepthToGoPlus1 > qDepthToGoPlus1)
 				
-			// Try the upper bound of the same depth parity (it might be exact)
-			qttpUbEntry := &qttEntry.ubEntry
-			// We can use this value if its same depth or deeper (and HeurUseQTTDeeperHits is configured),
+			// We can use the upper bound entry if its same depth or deeper (and HeurUseQTTDeeperHits is configured),
 			//    OR if the QTT entry is a quiesced value
-			qttpUbEntryUseable :=
-				(qttpUbEntry.isQuiesced && (qttpUbEntry.qDepthToGo == uint8(qDepthToGo) || HeurUseQTTDeeperHits)) ||
-				qttpUbEntry.evalType != TTInvalid && (qttpUbEntry.qDepthToGo == uint8(qDepthToGo) || (HeurUseQTTDeeperHits && qttpUbEntry.qDepthToGo > uint8(qDepthToGo)))
-			if qttpUbEntryUseable && qttpUbEntry.evalType == TTEvalExact {
-				s.stats.QttTrueEvals++
-				return qttpUbEntry.bestMove, qttpUbEntry.eval, qttpUbEntry.isQuiesced, true
-			}
+			qttUbEntryUseable :=
+				(qttEntry.ubIsQuiesced && /*why this extra depth condition? looks wrong?*/(qttEntry.ubQDepthToGoPlus1 == qDepthToGoPlus1 || HeurUseQTTDeeperHits)) ||
+				qttEntry.ubQDepthToGoPlus1 == qDepthToGoPlus1 ||
+				(HeurUseQTTDeeperHits && qttEntry.ubQDepthToGoPlus1 > qDepthToGoPlus1)
 
+			// See if we have an exact value
+			if qttLbEntryUseable && qttUbEntryUseable && qttEntry.ubEval <= qttEntry.lbEval {
+				s.stats.TTTrueEvals++
+				return qttEntry.bestMove, qttEntry.ubEval, qttEntry.ubIsQuiesced, true
+			}
+	
 			//////// See if we have a beta cut
-			if qttpLbEntryUseable {
-				if beta <= qttpLbEntry.eval {
+			if qttLbEntryUseable {
+				if beta <= qttEntry.lbEval {
 					s.stats.QttBetaCuts++
-					return qttpLbEntry.bestMove, qttpLbEntry.eval, qttpLbEntry.isQuiesced, true
+					return qttEntry.bestMove, qttEntry.lbEval, qttEntry.lbIsQuiesced, true
 				}
 			}
 			
 			//////// See if we have an alpha cut
-			if qttpUbEntryUseable {
-				if qttpUbEntry.eval <= alpha {
+			if qttUbEntryUseable {
+				if qttEntry.ubEval <= alpha {
 					s.stats.QttAlphaCuts++
-					return qttpUbEntry.bestMove, qttpUbEntry.eval, qttpUbEntry.isQuiesced, true
+					return qttEntry.bestMove, qttEntry.ubEval, qttEntry.ubIsQuiesced, true
 				}
 			}
 
-			//////// Set the qttMove
-			qttMove, qttMoveDepthToGo := NoMove, uint8(0)
-			if qttpLbEntry.evalType != TTInvalid {
-				qttMove = qttpLbEntry.bestMove
-				qttMoveDepthToGo = qttpLbEntry.depthToGo
-			} else if qttpUbEntry.evalType != TTInvalid && qttMoveDepthToGo < qttpUbEntry.depthToGo {
-				qttMove = qttpUbEntry.bestMove
-				qttMoveDepthToGo = qttpUbEntry.depthToGo
-			}
-
-			return qttMove, YourCheckMateEval, false, false
-			
+			//////// We can't use the eval, but use the bestMove anyhow
+			return qttEntry.bestMove, YourCheckMateEval, false, false
 		}
 	}
 

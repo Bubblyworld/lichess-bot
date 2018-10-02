@@ -6,23 +6,15 @@ import (
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
-type TTBoundEntryT struct {
-	eval      EvalCp
-	bestMove  dragon.Move
-	depthToGo uint8
- 	evalType  TTEvalT
-}
-
-type TTParityEntryT struct {
-	lbEntry TTBoundEntryT
-	ubEntry TTBoundEntryT
-}
-
 // Members ordered by descending size for better packing
 type TTEntryT struct {
 	// Could just store hi bits cos the hash index encodes the low bits implicitly
 	zobrist uint64         // Zobrist hash from dragontoothmg
-	parityHits [2]TTParityEntryT
+	bestMove  dragon.Move
+	lbEval EvalCp
+	ubEval EvalCp
+	lbDepthToGoPlus1 uint8 // 0 means value is not valid
+	ubDepthToGoPlus1 uint8 // 0 means value is not valid
 }
 
 // The eval for a TT entry can be exact, a lower bound, or an upper bound
@@ -49,28 +41,25 @@ func depthToGoParity(depthToGo int) int { return depthToGo & 1 }
 // Update a TT entry
 // There is policy in here, because we need to decide whether to overwrite or not with different depths and eval types.
 func updateTTEntry(entry *TTEntryT, eval EvalCp, bestMove dragon.Move, depthToGo int, evalType TTEvalT) {
-	depthToGo8 := uint8(depthToGo)
-	pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
+	depthToGoPlus1 := uint8(depthToGo+1)
 
 	// Try to update the lower-bound value
 	if evalType == TTEvalExact || evalType == TTEvalLowerBound {
 		// Replace if depth is greater or eval is more accurate
-		if pEntry.lbEntry.depthToGo < depthToGo8 || (pEntry.lbEntry.depthToGo == depthToGo8 && pEntry.lbEntry.eval < eval) {
-			pEntry.lbEntry.eval = eval
-			pEntry.lbEntry.bestMove = bestMove
-			pEntry.lbEntry.depthToGo = depthToGo8
-			pEntry.lbEntry.evalType = evalType
+		if entry.lbDepthToGoPlus1 < depthToGoPlus1 || (entry.lbDepthToGoPlus1 == depthToGoPlus1 && entry.lbEval < eval) {
+			entry.bestMove = bestMove
+			entry.lbEval = eval
+			entry.lbDepthToGoPlus1 = depthToGoPlus1
 		}
 	}
 
 	// Try to update the lower-bound value
 	if evalType == TTEvalExact || evalType == TTEvalUpperBound {
 		// Replace if depth is greater or eval is more accurate
-		if pEntry.ubEntry.depthToGo < depthToGo8 || (pEntry.ubEntry.depthToGo == depthToGo8 && eval < pEntry.ubEntry.eval) {
-			pEntry.ubEntry.eval = eval
-			pEntry.ubEntry.bestMove = bestMove
-			pEntry.ubEntry.depthToGo = depthToGo8
-			pEntry.ubEntry.evalType = evalType
+		if entry.ubDepthToGoPlus1 < depthToGoPlus1 || (entry.ubDepthToGoPlus1 == depthToGoPlus1 && eval < entry.ubEval) {
+			entry.bestMove = bestMove
+			entry.ubEval = eval
+			entry.ubDepthToGoPlus1 = depthToGoPlus1
 		}
 	}
 }
@@ -98,22 +87,19 @@ func (tt TtT) writeTTEntry(zobrist uint64, eval EvalCp, bestMove dragon.Move, de
 		updateTTEntry(&entry, eval, bestMove, depthToGo, evalType)
 	} else {
 		// initialise a new entry
+		depthToGoPlus1 := uint8(depthToGo+1)
 		entry.zobrist = zobrist
 
-		pEntry := &entry.parityHits[depthToGoParity(depthToGo)]
-
 		if evalType == TTEvalExact || evalType == TTEvalLowerBound {
-			pEntry.lbEntry.eval = eval
-			pEntry.lbEntry.bestMove = bestMove
-			pEntry.lbEntry.depthToGo = uint8(depthToGo)
-			pEntry.lbEntry.evalType = evalType
+			entry.bestMove = bestMove
+			entry.lbEval = eval
+			entry.lbDepthToGoPlus1 = depthToGoPlus1
 		}
 
 		if evalType == TTEvalExact || evalType == TTEvalUpperBound {
-			pEntry.ubEntry.eval = eval
-			pEntry.ubEntry.bestMove = bestMove
-			pEntry.ubEntry.depthToGo = uint8(depthToGo)
-			pEntry.ubEntry.evalType = evalType
+			entry.bestMove = bestMove
+			entry.ubEval = eval
+			entry.ubDepthToGoPlus1 = depthToGoPlus1
 		}
 	}
 	index := ttIndex(tt, zobrist)

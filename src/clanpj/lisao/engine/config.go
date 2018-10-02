@@ -17,13 +17,13 @@ var DumpSearchStats = false
 var SearchDepth = 7          // Ignored now that time control is implemented
 var SearchCutoffPercent = 30 // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
 var HeurUseNullMove = true
-var HeurUseLMR = true // true - weaker than not using LMR???
+var HeurUseLMR = true // weaker than not using?
 var UseMoveOrdering = true
 var UseIDMoveHint = true
 var UseIDMoveHintAlways = true
 var MinIDMoveHintDepth = 2
 var UseTT = true
-var UseDeepTT = true
+var UseDeepTT = true // worse than not using?
 var HeurUseTTDeeperHits = true // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
 var QSearchDepth = 12
@@ -46,5 +46,5 @@ func SearchAlgorithmString() string {
 }
 
 const MinDepth = 1
-const MaxDepth = 255 // needs to fit in uint8 in some places
+const MaxDepth = 254 // needs to fit in uint8 in some places (plus 1 cos 0 is used as a special value in the TT)
 const NoMove dragon.Move = 0

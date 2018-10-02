@@ -68,21 +68,6 @@ func NewSearchT(board *dragon.Board, ht HistoryTableT, kt *KillerMoveTableT, qkt
 	}
 }
 
-// Estimate an eval for the opposite depth parity
-func (s *SearchT) paritySwapEval(eval EvalCp, depth int) EvalCp {
-	return s.depthSwitchEval(eval, depth, depth-1)
-}
-
-// Make an attempt to translate an eval from one depth to another
-func (s *SearchT) depthSwitchEval(eval EvalCp, fromDepth int, toDepth int) EvalCp {
-	// Mate is mate, mate
-	if eval < YourCheckMateEval + MaxDepth || MyCheckMateEval - MaxDepth < eval {
-		return eval
-	}
-	// Otherwise use the depth eval difference for the root position to adjust to the previous depth
-	return eval //+ (s.evalByDepth[toDepth] - s.evalByDepth[fromDepth])
-}
-
 // Construct a pv string from the pv line, where available, defaulting to just the bet move otherwise
 func MkPvString(bestMove dragon.Move, pvLine []dragon.Move) string {
 	pv := ""
