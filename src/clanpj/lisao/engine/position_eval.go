@@ -46,6 +46,24 @@ var kingMasks = [64]uint64{
 	0x0203000000000000, 0x0507000000000000, 0x0a0e000000000000, 0x141c000000000000,
 	0x2838000000000000, 0x5070000000000000, 0xa0e0000000000000, 0x40c0000000000000}
 
+var king2Masks = [64]uint64{
+        0x0000000000070404, 0x00000000000f0808, 0x00000000001f1111, 0x00000000003e2222,
+        0x00000000007c4444, 0x0000000000f88888, 0x0000000000f01010, 0x0000000000e02020,
+        0x0000000007040404, 0x000000000f080808, 0x000000001f111111, 0x000000003e222222,
+        0x000000007c444444, 0x00000000f8888888, 0x00000000f0101010, 0x00000000e0202020,
+        0x0000000704040407, 0x0000000f0808080f, 0x0000001f1111111f, 0x0000003e2222223e,
+        0x0000007c4444447c, 0x000000f8888888f8, 0x000000f0101010f0, 0x000000e0202020e0,
+        0x0000070404040700, 0x00000f0808080f00, 0x00001f1111111f00, 0x00003e2222223e00,
+        0x00007c4444447c00, 0x0000f8888888f800, 0x0000f0101010f000, 0x0000e0202020e000,
+        0x0007040404070000, 0x000f0808080f0000, 0x001f1111111f0000, 0x003e2222223e0000,
+        0x007c4444447c0000, 0x00f8888888f80000, 0x00f0101010f00000, 0x00e0202020e00000,
+        0x0704040407000000, 0x0f0808080f000000, 0x1f1111111f000000, 0x3e2222223e000000,
+        0x7c4444447c000000, 0xf8888888f8000000, 0xf0101010f0000000, 0xe0202020e0000000,
+        0x0404040700000000, 0x0808080f00000000, 0x1111111f00000000, 0x2222223e00000000,
+        0x4444447c00000000, 0x888888f800000000, 0x101010f000000000, 0x202020e000000000,
+        0x0404070000000000, 0x08080f0000000000, 0x11111f0000000000, 0x22223e0000000000,
+        0x44447c0000000000, 0x8888f80000000000, 0x1010f00000000000, 0x2020e00000000000}
+
 type RegionT uint8
 const (
 	Middle1 RegionT = iota
@@ -71,6 +89,7 @@ type PosEvalT struct {
 
 	// Just a cache to simply the code
 	allPieces uint64
+	kingPos [dragon.NColors]uint8
 	
 	// The 'influence' of each piece, indexed by the piece's position.
 	// Includes defence of pieces of the same color, so do '& ^MyAll' to get actual possible moves.
@@ -106,6 +125,9 @@ func InitPosEval(board *dragon.Board, posEval *PosEvalT) {
 	posEval.board = board
 
 	posEval.allPieces = board.Bbs[dragon.White][dragon.All] | board.Bbs[dragon.Black][dragon.All]
+
+	posEval.kingPos[dragon.White] = uint8(bits.TrailingZeros64(board.Bbs[dragon.White][dragon.King]))
+	posEval.kingPos[dragon.Black] = uint8(bits.TrailingZeros64(board.Bbs[dragon.Black][dragon.King]))
 
 	posEval.initColor(dragon.White)
 	posEval.initColor(dragon.Black)
@@ -331,15 +353,33 @@ var SemiStuckPiecePenalty = [dragon.NPieces]EvalCp{
 	12,  // Rook
 	22,  // Queen
 	0}    // King
-	
+
+var King1AttackBonus = [dragon.NPieces]EvalCp{
+	0,    // Nothing
+	20,    // Pawn
+	13,   // Knight
+	13,   // Bishop
+	15,  // Rook
+	17,  // Queen
+	0}    // King
+
+var King2AttackBonus = [dragon.NPieces]EvalCp{
+	0,    // Nothing
+	10,   // Pawn
+	5,    // Knight
+	5,    // Bishop
+	3,    // Rook
+	2,    // Queen
+	0}    // King
+
 /** From Piece color's perspective */
 func (p *PosEvalT) calcPieceInfluenceEval(pos uint8, color dragon.ColorT) EvalCp {
 	eval := EvalCp(0)
 
 	oppColor := dragon.Black ^ color
+	piece := p.board.PieceAt(pos)
 
 	// Board influence
-	piece := p.board.PieceAt(pos)
 	regionEvals := &PieceInfluenceByBoardRegion[piece]
 
 	influence := p.influence[pos]
@@ -354,7 +394,14 @@ func (p *PosEvalT) calcPieceInfluenceEval(pos uint8, color dragon.ColorT) EvalCp
 	influenceMiddle3 := influence & Regions[Middle3]
 	eval += regionEvals[Middle3] * EvalCp(bits.OnesCount64(influenceMiddle3))
 
-	// King attack/defence
+	// King attack/defence - TODO defence
+	oppKingPos := p.kingPos[oppColor]
+
+	influenceOppKing1 := influence & kingMasks[oppKingPos]
+	eval += King1AttackBonus[piece] * EvalCp(bits.OnesCount64(influenceOppKing1))
+
+	influenceOppKing2 := influence & king2Masks[oppKingPos]
+	eval += King2AttackBonus[piece] * EvalCp(bits.OnesCount64(influenceOppKing2))
 
 	// Penalty for being stuck - exclude protection of own color pieces
 	moves := influence & ^p.board.Bbs[color][dragon.All]
