@@ -337,6 +337,8 @@ func StaticEvalOrderN(board *dragon.Board) EvalCp {
 		orderNEval = EvalCp(0)
 	}
 
+	orderNEval += StaticPositionEvalOrderN(board)
+
 	// Clamp it to the absolute bounds
 	if orderNEval > MaxAbsStaticEvalOrderN {
 		orderNEval = MaxAbsStaticEvalOrderN
@@ -346,6 +348,13 @@ func StaticEvalOrderN(board *dragon.Board) EvalCp {
 	}
 
 	return orderNEval
+}
+
+// Expensive part - O(n) even with delta eval - of static eval from white's perspective.
+func StaticPositionEvalOrderN(board *dragon.Board) EvalCp {
+	var posEval PosEvalT
+	InitPosEval(board, &posEval)
+	return posEval.calcInfluenceEval() + posEval.calcSpaceEval()
 }
 
 // Sum of individual piece evals
