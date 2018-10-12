@@ -66,20 +66,20 @@ func doFen(fen string, descr string) {
 	// reset the qsearch TT
 	engine.ResetQtt()
 	
-	uciSearch(&board, 6, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
+	uciSearch(&board, 10, 0, engine.YourCheckMateEval, engine.MyCheckMateEval)
 	//fmt.Println("#nodes-d0", engine.NodesD0, "#full-width", engine.NodesD0FullWidth, "#neg", engine.NodesD0NegDiff, "#nodes-dm1", engine.NodesDM1, "Max d0/dm1 eval diff", engine.MaxD0DM1EvalDiff, "Min d0/dm1 eval diff", engine.MinD0DM1EvalDiff)
 }
 
 func main() {
 	defer profile.Start().Stop()
-	//doFen(dragon.Startpos, "starting pos")
+	doFen(dragon.Startpos, "starting pos")
 	//doFen(Fine70Fen, "Fine 70 endgame")
 	//doFen(RandomFen)
 	// for _, fenDescr := range CcrFens {
 	// 	doFen(fenDescr[0], fenDescr[1])
 	// }
-	fenDescr := CcrFens[5]
-	doFen(fenDescr[0], fenDescr[1])
+	// fenDescr := CcrFens[5]
+	// doFen(fenDescr[0], fenDescr[1])
 }
 
 // This MUST be per-search-thread but for now we're single-threaded so global is fine.

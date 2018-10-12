@@ -338,38 +338,38 @@ var PieceInfluenceByBoardRegion = [dragon.NPieces][NRegions]EvalCp{
 
 var StuckPiecePenalty = [dragon.NPieces]EvalCp{
 	0,    // Nothing
-	1,    // Pawn
-	7,    // Knight is never really stuck
-	15,  // Bishop
-	25,  // Rook
-	45,  // Queen
+	0,    // Pawn
+	3,    // Knight is never really stuck
+	5,  // Bishop
+	7,  // Rook
+	7,  // Queen
 	0}    // King
 	
 var SemiStuckPiecePenalty = [dragon.NPieces]EvalCp{
 	0,    // Nothing
-	1,    // Pawn
-	7,   // Knight
+	0,    // Pawn
+	2,   // Knight
 	3,   // Bishop
-	12,  // Rook
-	22,  // Queen
+	4,  // Rook
+	5,  // Queen
 	0}    // King
 
 var King1AttackBonus = [dragon.NPieces]EvalCp{
 	0,    // Nothing
-	20,    // Pawn
-	13,   // Knight
-	13,   // Bishop
-	15,  // Rook
-	17,  // Queen
+	2,    // Pawn
+	3,   // Knight
+	3,   // Bishop
+	5,  // Rook
+	5,  // Queen
 	0}    // King
 
 var King2AttackBonus = [dragon.NPieces]EvalCp{
 	0,    // Nothing
-	10,   // Pawn
-	5,    // Knight
-	5,    // Bishop
+	1,   // Pawn
+	2,    // Knight
+	2,    // Bishop
 	3,    // Rook
-	2,    // Queen
+	3,    // Queen
 	0}    // King
 
 /** From Piece color's perspective */
