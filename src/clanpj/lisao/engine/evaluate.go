@@ -30,13 +30,22 @@ const InvalidEval EvalCp = math.MinInt16
 const DrawEval EvalCp = 0
 
 // Piece values
-const nothingVal = 0
-const pawnVal = 100
-const knightVal = 300
-const bishopVal = 300
-const rookVal = 500
-const queenVal = 900
-const kingVal = 0
+const nothingVal = EvalCp(0)
+var pawnVal = EvalCp(100)
+var knightVal = EvalCp(300)
+var bishopVal = EvalCp(300)
+var rookVal = EvalCp(500)
+var queenVal = EvalCp(900)
+const kingVal = EvalCp(0)
+
+// Register the piece values as eval config params
+func init() {
+	RegisterConfigParamEvalCpDefault("pawn-piece-val", &pawnVal)
+	RegisterConfigParamEvalCpDefault("knight-piece-val", &knightVal)
+	RegisterConfigParamEvalCpDefault("bishop-piece-val", &bishopVal)
+	RegisterConfigParamEvalCpDefault("rook-piece-val", &rookVal)
+	RegisterConfigParamEvalCpDefault("queen-piece-val", &queenVal)
+}
 
 var pieceVals = [7]EvalCp{
 	nothingVal,
@@ -68,6 +77,8 @@ var whitePawnPosVals = [64]int8{
 	78, 83, 86, 73, 102, 82, 85, 90,
 	0, 0, 0, 0, 0, 0, 0, 0}
 
+func init() { RegisterConfigParamInt8ArrayDefault("white-pawn-pos-val", whitePawnPosVals[:]) }
+
 var whiteKnightPosVals = [64]int8{
 	-74, -23, -26, -24, -19, -35, -22, -69,
 	-23, -15, 2, 0, 2, 0, -23, -20,
@@ -77,6 +88,8 @@ var whiteKnightPosVals = [64]int8{
 	10, 67, 1, 74, 73, 27, 62, -2,
 	-3, -6, 100, -36, 4, 62, -4, -14,
 	-66, -53, -75, -75, -10, -55, -58, -70}
+
+func init() { RegisterConfigParamInt8ArrayDefault("white-knight-pos-val", whiteKnightPosVals[:]) }
 
 var whiteBishopPosVals = [64]int8{
 	-7, 2, -15, -12, -14, -15, -10, -10,
@@ -88,6 +101,8 @@ var whiteBishopPosVals = [64]int8{
 	-11, 20, 35, -42, -39, 31, 2, -22,
 	-59, -78, -82, -76, -23, -107, -37, -50}
 
+func init() { RegisterConfigParamInt8ArrayDefault("white-bishop-pos-val", whiteBishopPosVals[:]) }
+
 var whiteRookPosVals = [64]int8{
 	-30, -24, -18, 5, -2, -18, -31, -32,
 	-53, -38, -31, -26, -29, -43, -44, -53,
@@ -97,6 +112,8 @@ var whiteRookPosVals = [64]int8{
 	19, 35, 28, 33, 45, 27, 25, 15,
 	55, 29, 56, 67, 55, 62, 34, 60,
 	35, 29, 33, 4, 37, 33, 56, 50}
+
+func init() { RegisterConfigParamInt8ArrayDefault("white-rook-pos-val", whiteRookPosVals[:]) }
 
 var whiteQueenPosVals = [64]int8{
 	-39, -30, -31, -13, -31, -36, -34, -42,
@@ -108,6 +125,8 @@ var whiteQueenPosVals = [64]int8{
 	14, 32, 60, -10, 20, 76, 57, 24,
 	6, 1, -8, -104, 69, 24, 88, 26}
 
+func init() { RegisterConfigParamInt8ArrayDefault("white-queen-pos-val", whiteQueenPosVals[:]) }
+
 var whiteKingPosVals = [64]int8{
 	17, 30, -3, -14, 6, -1, 40, 18,
 	-4, 3, -14, -50, -57, -18, 13, 4,
@@ -117,6 +136,8 @@ var whiteKingPosVals = [64]int8{
 	-62, 12, -57, 44, -67, 28, 37, -31,
 	-32, 10, 55, 56, 56, 55, 10, 3,
 	4, 54, 47, -99, -99, 60, 83, -62}
+
+func init() { RegisterConfigParamInt8ArrayDefault("white-king-pos-val", whiteKingPosVals[:]) }
 
 // From - https://chessprogramming.wikispaces.com/Simplified+evaluation+function - (tables inverted to reflect dragon pos ordering)
 // Added some deliberate jitter to add artificial discrimination into stuck end-games (like Fine 70)
@@ -129,6 +150,8 @@ var whiteKingEndgamePosVals = [64]int8{
 	-30, -12, 17, 29, 29, 17, -12, -30,
 	-32, -19, -9, 0, 0, -9, -19, -32,
 	-50, -41, -30, -20, -20, -30, -41, -50}
+
+func init() { RegisterConfigParamInt8ArrayDefault("white-king-eg-val", whiteKingEndgamePosVals[:]) }
 
 var whitePiecePosVals = [7]*[64]int8{
 	&nothingPosVals,
@@ -150,6 +173,8 @@ var blackPawnPosVals = [64]int8{
 	-31, 8, -7, -37, -36, -14, 3, -31,
 	0, 0, 0, 0, 0, 0, 0, 0}
 
+func init() { RegisterConfigParamInt8ArrayDefault("black-pawn-pos-val", blackPawnPosVals[:]) }
+
 var blackKnightPosVals = [64]int8{
 	-66, -53, -75, -75, -10, -55, -58, -70,
 	-3, -6, 100, -36, 4, 62, -4, -14,
@@ -159,6 +184,8 @@ var blackKnightPosVals = [64]int8{
 	-18, 10, 13, 22, 18, 15, 11, -14,
 	-23, -15, 2, 0, 2, 0, -23, -20,
 	-74, -23, -26, -24, -19, -35, -22, -69}
+
+func init() { RegisterConfigParamInt8ArrayDefault("black-knight-pos-val", blackKnightPosVals[:]) }
 
 var blackBishopPosVals = [64]int8{
 	-59, -78, -82, -76, -23, -107, -37, -50,
@@ -170,6 +197,8 @@ var blackBishopPosVals = [64]int8{
 	19, 20, 11, 6, 7, 6, 20, 16,
 	-7, 2, -15, -12, -14, -15, -10, -10}
 
+func init() { RegisterConfigParamInt8ArrayDefault("black-bishop-pos-val", blackBishopPosVals[:]) }
+
 var blackRookPosVals = [64]int8{
 	35, 29, 33, 4, 37, 33, 56, 50,
 	55, 29, 56, 67, 55, 62, 34, 60,
@@ -179,6 +208,8 @@ var blackRookPosVals = [64]int8{
 	-42, -28, -42, -25, -25, -35, -26, -46,
 	-53, -38, -31, -26, -29, -43, -44, -53,
 	-30, -24, -18, 5, -2, -18, -31, -32}
+
+func init() { RegisterConfigParamInt8ArrayDefault("black-rook-pos-val", blackRookPosVals[:]) }
 
 var blackQueenPosVals = [64]int8{
 	6, 1, -8, -104, 69, 24, 88, 26,
@@ -190,6 +221,8 @@ var blackQueenPosVals = [64]int8{
 	-36, -18, 0, -19, -15, -15, -21, -38,
 	-39, -30, -31, -13, -31, -36, -34, -42}
 
+func init() { RegisterConfigParamInt8ArrayDefault("black-queen-pos-val", blackQueenPosVals[:]) }
+
 var blackKingPosVals = [64]int8{
 	4, 54, 47, -99, -99, 60, 83, -62,
 	-32, 10, 55, 56, 56, 55, 10, 3,
@@ -199,6 +232,8 @@ var blackKingPosVals = [64]int8{
 	-47, -42, -43, -79, -64, -32, -29, -32,
 	-4, 3, -14, -50, -57, -18, 13, 4,
 	17, 30, -3, -14, 6, -1, 40, 18}
+
+func init() { RegisterConfigParamInt8ArrayDefault("black-king-pos-val", blackKingPosVals[:]) }
 
 // From - https://chessprogramming.wikispaces.com/Simplified+evaluation+function
 // Added some deliberate jitter to add artificial discrimination into stuck end-games (like Fine 70)
@@ -211,6 +246,8 @@ var blackKingEndgamePosVals = [64]int8{
 	-30, -12, 18, 29, 29, 18, -12, -30,
 	-32, -30, 4, 0, 0, 4, -30, -32,
 	-50, -33, -30, -28, -28, -30, -33, -50}
+
+func init() { RegisterConfigParamInt8ArrayDefault("black-king-eg-pos-val", blackKingEndgamePosVals[:]) }
 
 var blackPiecePosVals = [7]*[64]int8{
 	&nothingPosVals,
@@ -359,11 +396,11 @@ func StaticPositionEvalOrderN(board *dragon.Board) EvalCp {
 
 // Sum of individual piece evals
 func piecesEval(bitboards *dragon.Bitboards) EvalCp {
-	eval := pawnVal * bits.OnesCount64(bitboards[dragon.Pawn])
-	eval += bishopVal * bits.OnesCount64(bitboards[dragon.Bishop])
-	eval += knightVal * bits.OnesCount64(bitboards[dragon.Knight])
-	eval += rookVal * bits.OnesCount64(bitboards[dragon.Rook])
-	eval += queenVal * bits.OnesCount64(bitboards[dragon.Queen])
+	eval := int(pawnVal) * bits.OnesCount64(bitboards[dragon.Pawn])
+	eval += int(bishopVal) * bits.OnesCount64(bitboards[dragon.Bishop])
+	eval += int(knightVal) * bits.OnesCount64(bitboards[dragon.Knight])
+	eval += int(rookVal) * bits.OnesCount64(bitboards[dragon.Rook])
+	eval += int(queenVal) * bits.OnesCount64(bitboards[dragon.Queen])
 
 	return EvalCp(eval)
 }
@@ -386,6 +423,8 @@ func nonPawnsCount(board *dragon.Board) int {
 // Note these are counts of black plus white pieces excluding pawns and including kings.
 const EndGamePiecesCountHi = 8
 const EndGamePiecesCountLo = 4
+
+// TODO - add the above two to config?
 
 func endGameRatioForCount(count int) float64 {
 	if count > EndGamePiecesCountHi {
@@ -449,11 +488,19 @@ func pieceTypePiecesPosVal(bitmask uint64, piecePosVals *[64]int8) EvalCp {
 
 // Passed pawn bonuses
 // TODO rationalise these with pawn pos vals
-const pp2 int8 = 7
-const pp3 int8 = 13
-const pp4 int8 = 20
-const pp5 int8 = 28
-const pp6 int8 = 37
+var pp2 int8 = 7
+var pp3 int8 = 13
+var pp4 int8 = 20
+var pp5 int8 = 28
+var pp6 int8 = 37
+
+func init() {
+	RegisterConfigParamInt8Default("passed-pawn-rank-2", &pp2)
+	RegisterConfigParamInt8Default("passed-pawn-rank-3", &pp3)
+	RegisterConfigParamInt8Default("passed-pawn-rank-4", &pp4)
+	RegisterConfigParamInt8Default("passed-pawn-rank-5", &pp5)
+	RegisterConfigParamInt8Default("passed-pawn-rank-6", &pp6)
+}
 
 var whitePassedPawnPosVals = [64]int8{
 	0, 0, 0, 0, 0, 0, 0, 0,
@@ -477,13 +524,19 @@ var blackPassedPawnPosVals = [64]int8{
 
 // Bonus for pawns protecting pawns
 // Disabled since it actually seems worse for root position search
-const pProtPawnVal = 0
+var pProtPawnVal int8 = 0
 
 // Bonus for pawns protecting pieces
-const pProtPieceVal = 10
+var pProtPieceVal int8 = 10
 
 // Penalty per doubled pawn
-const doubledPawnPenalty = -5
+var doubledPawnPenalty int8 = -5
+
+func init() {
+	RegisterConfigParamInt8Default("pawn-prot-pawn", &pProtPawnVal)
+	RegisterConfigParamInt8Default("pawn-prot-piece", &pProtPieceVal)
+	RegisterConfigParamInt8Default("doubled-pawn", &doubledPawnPenalty)
+}
 
 // Pawn extras
 func pawnExtrasVal(board *dragon.Board) EvalCp {
@@ -503,29 +556,29 @@ func pawnExtrasVal(board *dragon.Board) EvalCp {
 	// Pawns protected by pawns
 	wPawnAtt := WPawnAttacks(wPawns)
 	wPawnsProtectedByPawns := wPawnAtt & wPawns
-	wPProtPawnsVal := bits.OnesCount64(wPawnsProtectedByPawns) * pProtPawnVal
+	wPProtPawnsVal := bits.OnesCount64(wPawnsProtectedByPawns) * int(pProtPawnVal)
 
 	bPawnAtt := BPawnAttacks(bPawns)
 	bPawnsProtectedByPawns := bPawnAtt & bPawns
-	bPProtPawnsVal := bits.OnesCount64(bPawnsProtectedByPawns) * pProtPawnVal
+	bPProtPawnsVal := bits.OnesCount64(bPawnsProtectedByPawns) * int(pProtPawnVal)
 
 	// Pieces protected by pawns
 	wPieces := board.Bbs[dragon.White][dragon.All] & ^wPawns
 	wPiecesProtectedByPawns := wPawnAtt & wPieces
-	wPProtPiecesVal := bits.OnesCount64(wPiecesProtectedByPawns) * pProtPieceVal
+	wPProtPiecesVal := bits.OnesCount64(wPiecesProtectedByPawns) * int(pProtPieceVal)
 
 	bPieces := board.Bbs[dragon.Black][dragon.All] & ^bPawns
 	bPiecesProtectedByPawns := bPawnAtt & bPieces
-	bPProtPiecesVal := bits.OnesCount64(bPiecesProtectedByPawns) * pProtPieceVal
+	bPProtPiecesVal := bits.OnesCount64(bPiecesProtectedByPawns) * int(pProtPieceVal)
 
 	// Doubled pawns
 	wPawnTelestop := NFill(N(wPawns))
 	wDoubledPawns := wPawnTelestop & wPawns
-	wDoubledPawnVal := bits.OnesCount64(wDoubledPawns) * doubledPawnPenalty
+	wDoubledPawnVal := bits.OnesCount64(wDoubledPawns) * int(doubledPawnPenalty)
 
 	bPawnTelestop := SFill(S(bPawns))
 	bDoubledPawns := bPawnTelestop & bPawns
-	bDoubledPawnVal := bits.OnesCount64(bDoubledPawns) * doubledPawnPenalty
+	bDoubledPawnVal := bits.OnesCount64(bDoubledPawns) * int(doubledPawnPenalty)
 
 	return (wPPVal - bPPVal) +
 		EvalCp(wPProtPawnsVal-bPProtPawnsVal) +
@@ -576,10 +629,15 @@ var bKingProtectionBbs = [3]uint64{
 	0x0000000000e0e000} // KSideProtection
 
 // Bonus for pieces that are protecting the king
-const kingProtectorVal = 8
+var kingProtectorVal int8 = 8
 
 // Additional bonus for pawns that are protecting the king
-const kingPawnProtectorVal = 11
+var kingPawnProtectorVal int8 = 11
+
+func init() {
+	RegisterConfigParamInt8Default("king-prot", &kingProtectorVal)
+	RegisterConfigParamInt8Default("king-pawn-prot", &kingPawnProtectorVal)
+}
 
 // Naive king protection - count pieces around the king if the king is in the corner
 // From White's perspective
@@ -598,7 +656,7 @@ func kingProtectionVal(board *dragon.Board, endGameRatio float64) EvalCp {
 
 	wKingPawnProtectors := wBbs[dragon.Pawn] & wKingProtectionBb
 
-	wKingProtectionVal := bits.OnesCount64(wKingProtectors)*kingProtectorVal + bits.OnesCount64(wKingPawnProtectors)*kingPawnProtectorVal
+	wKingProtectionVal := bits.OnesCount64(wKingProtectors)*int(kingProtectorVal) + bits.OnesCount64(wKingPawnProtectors)*int(kingPawnProtectorVal)
 
 	bBbs := &board.Bbs[dragon.Black]
 	bKingPos := bits.TrailingZeros64(bBbs[dragon.King])
@@ -610,7 +668,7 @@ func kingProtectionVal(board *dragon.Board, endGameRatio float64) EvalCp {
 
 	bKingPawnProtectors := bBbs[dragon.Pawn] & bKingProtectionBb
 
-	bKingProtectionVal := bits.OnesCount64(bKingProtectors)*kingProtectorVal + bits.OnesCount64(bKingPawnProtectors)*kingPawnProtectorVal
+	bKingProtectionVal := bits.OnesCount64(bKingProtectors)*int(kingProtectorVal) + bits.OnesCount64(bKingPawnProtectors)*int(kingPawnProtectorVal)
 
 	// King protection in end-game is irrelevant
 	return EvalCp(float64(wKingProtectionVal-bKingProtectionVal) * (1.0 - endGameRatio))
@@ -624,8 +682,13 @@ func bishopPairVal(board *dragon.Board) EvalCp {
 
 const blackSquares = uint64(0x5555555555555555)
 const whiteSquares = uint64(0xaaaaaaaaaaaaaaaa)
-const bishopPairBonus = EvalCp(80)
-const bishopPairProxBonus = EvalCp(3)
+var bishopPairBonus = EvalCp(80)
+var bishopPairProxBonus = EvalCp(3)
+
+func init() {
+	RegisterConfigParamEvalCpDefault("bishop-pair", &bishopPairBonus)
+	RegisterConfigParamEvalCpDefault("bishop-pair-proximity", &bishopPairProxBonus)
+}
 
 func bishopPairColorVal(bitboards *dragon.Bitboards) EvalCp {
 	bishopsBonus := EvalCp(0)
@@ -693,9 +756,15 @@ func oppColor(color dragon.ColorT) dragon.ColorT {
 	return dragon.Black ^ color
 }
 
-const endgameKingPawnProxBonus = EvalCp(13)
-const loneMinorPiecePenalty = -EvalCp(190)
-const endgameKingMajorProxBonus = EvalCp(17)
+var endgameKingPawnProxBonus = EvalCp(13)
+var loneMinorPiecePenalty = -EvalCp(190)
+var endgameKingMajorProxBonus = EvalCp(17)
+
+func init() {
+	RegisterConfigParamEvalCpDefault("endgame-king-pawn-proximity", &endgameKingPawnProxBonus)
+	RegisterConfigParamEvalCpDefault("lone-minor-piece", &loneMinorPiecePenalty)
+	RegisterConfigParamEvalCpDefault("endgame-king-major-proximity", &endgameKingMajorProxBonus)
+}
 
 // TODO (rpj) I'm a bit concerned that these various eval categories will lead to sudden changes in the eval.
 func endgameColorVal(board *dragon.Board, color dragon.ColorT) EvalCp {

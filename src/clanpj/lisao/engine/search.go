@@ -130,6 +130,7 @@ func Search2(board *dragon.Board, ht HistoryTableT, kt *KillerMoveTableT, qkt *K
 	originalStart := time.Now()
 
 	fmt.Println("info string using", SearchAlgorithmString(), "max depth", maxDepthToGo)
+	fmt.Println("info string", len(configParams), "config params")
 
 	s := NewSearchT(board, ht, kt, qkt, evalByDepth[:], &stats, timeout, 50)
 
