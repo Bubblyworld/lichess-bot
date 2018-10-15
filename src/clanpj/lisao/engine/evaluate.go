@@ -40,7 +40,7 @@ const kingVal = EvalCp(0)
 
 // Register the piece values as eval config params
 func init() {
-	RegisterConfigParamEvalCpDefault("pawn-piece-val", &pawnVal)
+	//RegisterConfigParamEvalCpDefault("pawn-piece-val", &pawnVal) since this is supposed to be a centi-pawn metric, we leave pawn eval pinned at 100
 	RegisterConfigParamEvalCpDefault("knight-piece-val", &knightVal)
 	RegisterConfigParamEvalCpDefault("bishop-piece-val", &bishopVal)
 	RegisterConfigParamEvalCpDefault("rook-piece-val", &rookVal)

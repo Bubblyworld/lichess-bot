@@ -327,47 +327,21 @@ func uciLoop() {
 			uciStartTimer(timeoutMs)
 			// Run the search in another thread.
 			go uciSearch(&board, depth, timeoutMs)
-		// case "secretparam": // secret parameters used for optimizing the evaluation function
-		// 	res, _ := strconv.Atoi(tokens[2])
-		// 	switch tokens[1] {
-		// 	case "BishopPairBonus":
-		// 		eval.BishopPairBonus = res
-		// 	case "DiagonalMobilityBonus":
-		// 		eval.DiagonalMobilityBonus = res
-		// 	case "OrthogonalMobilityBonus":
-		// 		eval.OrthogonalMobilityBonus = res
-		// 	case "DoubledPawnPenalty":
-		// 		eval.DoubledPawnPenalty = res
-		// 	case "PassedPawnBonus":
-		// 		eval.PassedPawnBonus = res
-		// 	case "IsolatedPawnPenalty":
-		// 		eval.IsolatedPawnPenalty = res
-
-		// 	default:
-		// 		if tokens[1][0:14] == "PawnTableStart" {
-		// 			idx := tokens[1][14:len(tokens[1])]
-		// 			square, _ := strconv.Atoi(idx)
-		// 			val, _ := strconv.Atoi(tokens[2])
-		// 			eval.PawnTableStart[square] = val
-		// 		} else if tokens[1][0:14] == "KingTableStart" {
-		// 			idx := tokens[1][14:len(tokens[1])]
-		// 			square, _ := strconv.Atoi(idx)
-		// 			val, _ := strconv.Atoi(tokens[2])
-		// 			eval.KingTableStart[square] = val
-		// 		} else if tokens[1][0:15] == "CentralizeTable" {
-		// 			idx := tokens[1][15:len(tokens[1])]
-		// 			square, _ := strconv.Atoi(idx)
-		// 			val, _ := strconv.Atoi(tokens[2])
-		// 			eval.CentralizeTable[square] = val
-		// 		} else if tokens[1][0:16] == "KnightTableStart" {
-		// 			idx := tokens[1][16:len(tokens[1])]
-		// 			square, _ := strconv.Atoi(idx)
-		// 			val, _ := strconv.Atoi(tokens[2])
-		// 			eval.KnightTableStart[square] = val
-		// 		} else {
-		// 			fmt.Println("Unknown secret param")
-		// 		}
-		// 	}
+		case "getevalconfig": // secret parameters for evaluation
+			configParams := engine.GetConfigParams()
+			configParamStrings := make([]string, len(configParams))
+			for i := 0; i < len(configParams); i++ {
+				param := configParams[i]
+				configParamStrings[i] = fmt.Sprintf("{%s,%d,%d,%d,%d}", param.Descr, param.Min, param.Max, param.Delta, param.Get())
+			}
+			fmt.Printf("evalconfig %s\n", strings.Join(configParamStrings, " "))
+		case "setevalconfig": // secret parameters for evaluation
+			paramStrings := tokens[1:]
+			params := make([]int, len(paramStrings))
+			for i := 0; i < len(paramStrings); i++ {
+				params[i], _ = strconv.Atoi(paramStrings[i])
+			}
+			engine.SetConfigParams(params)
 		case "stop":
 			uciStop()
 		case "position":
