@@ -1,8 +1,7 @@
 package engine
 
 import (
-	// "fmt"
-	// "math"
+	"fmt"
 	"math/bits"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
@@ -79,6 +78,8 @@ const middle3Bits uint64   = 0x007e7e7e7e7e7e00
 const fullBoardBits uint64 = 0xffffffffffffffff
 
 var Regions = [NRegions]uint64{ middle1Bits, middle2Bits, middle3Bits, fullBoardBits}
+
+var RegionNames = [NRegions]string{ "middle1", "middle2", "middle3", "full-board"}
 
 // Synopsis of the board position, including individual piece's influence, attack/defence bitmaps and much more.
 // We ignore side to move.
@@ -306,7 +307,11 @@ func (p *PosEvalT) calcInfluenceEval() EvalCp {
 	return influenceEval
 }
 
-const SpaceBonusPerSquare = EvalCp(7)
+var SpaceBonusPerSquare = EvalCp(7)
+
+func init() {
+	RegisterConfigParamEvalCpDefault("space-bonus-per-square", &SpaceBonusPerSquare)
+}
 
 /** From White's perspective */
 func (p *PosEvalT) calcSpaceEval() EvalCp {
@@ -325,7 +330,7 @@ var KnightInfluenceByBoardRegion  = [NRegions]EvalCp{ 0, 0, 0, 0}  // Already ca
 var BishopInfluenceByBoardRegion  = [NRegions]EvalCp{ 3, 3, 3, 3}
 var RookInfluenceByBoardRegion    = [NRegions]EvalCp{ 2, 2, 2, 2}
 var QueenInfluenceByBoardRegion   = [NRegions]EvalCp{ 1, 1, 1, 1}
-var KingInfluenceByBoardRegion    = [NRegions]EvalCp{ 0, 0, 0, 0}  // Already captured by pos-vals for Knights
+var KingInfluenceByBoardRegion    = [NRegions]EvalCp{ 0, 0, 0, 0}  // Already captured by pos-vals for Kings
 
 var PieceInfluenceByBoardRegion = [dragon.NPieces][NRegions]EvalCp{
 	NothingInfluenceByBoardRegion,
@@ -336,41 +341,71 @@ var PieceInfluenceByBoardRegion = [dragon.NPieces][NRegions]EvalCp{
 	QueenInfluenceByBoardRegion,
 	KingInfluenceByBoardRegion}
 
+func initRegisterByPieceByRegion(vals *[NRegions]EvalCp, piece string, config string) {
+	for i := 0; i < int(NRegions); i++ {
+		RegisterConfigParamEvalCpDefault(fmt.Sprintf("%s-%s-%s", piece, RegionNames[i], config), &vals[i])
+	}
+}
+
+func init() {
+	initRegisterByPieceByRegion(&BishopInfluenceByBoardRegion, "bishop", "influence")
+	initRegisterByPieceByRegion(&RookInfluenceByBoardRegion, "rook", "influence")
+	initRegisterByPieceByRegion(&QueenInfluenceByBoardRegion, "queen", "influence")
+}
+
 var StuckPiecePenalty = [dragon.NPieces]EvalCp{
-	0,    // Nothing
-	0,    // Pawn
-	3,    // Knight is never really stuck
+	0,  // Nothing
+	0,  // Pawn
+	3,  // Knight is never really stuck
 	5,  // Bishop
 	7,  // Rook
 	7,  // Queen
-	0}    // King
+	0}  // King
 	
 var SemiStuckPiecePenalty = [dragon.NPieces]EvalCp{
 	0,    // Nothing
 	0,    // Pawn
-	2,   // Knight
-	3,   // Bishop
-	4,  // Rook
-	5,  // Queen
+	2,    // Knight
+	3,    // Bishop
+	4,    // Rook
+	5,    // Queen
 	0}    // King
 
 var King1AttackBonus = [dragon.NPieces]EvalCp{
 	0,    // Nothing
 	2,    // Pawn
-	3,   // Knight
-	3,   // Bishop
-	5,  // Rook
-	5,  // Queen
+	3,    // Knight
+	3,    // Bishop
+	5,    // Rook
+	5,    // Queen
 	0}    // King
 
 var King2AttackBonus = [dragon.NPieces]EvalCp{
 	0,    // Nothing
-	1,   // Pawn
+	1,    // Pawn
 	2,    // Knight
 	2,    // Bishop
 	3,    // Rook
 	3,    // Queen
 	0}    // King
+
+var PieceNames = [dragon.NPieces]string{ "nothing", "pawn", "knight", "bishop", "rook", "queen", "king"}
+
+func initRegisterByPieceNoKing(vals *[dragon.NPieces]EvalCp, config string) {
+	for piece := dragon.Nothing; piece < dragon.NPieces; piece++ {
+		if piece == dragon.Nothing || piece == dragon.King {
+			continue
+		}
+		RegisterConfigParamEvalCpDefault(fmt.Sprintf("%s-%s", PieceNames[piece], config), &vals[piece])
+	}
+}
+
+func init() {
+	initRegisterByPieceNoKing(&StuckPiecePenalty, "stuck-penalty")
+	initRegisterByPieceNoKing(&SemiStuckPiecePenalty, "semi-stuck-penalty")
+	initRegisterByPieceNoKing(&King1AttackBonus, "king-attack-1")
+	initRegisterByPieceNoKing(&King2AttackBonus, "king-attack-2")
+}
 
 /** From Piece color's perspective */
 func (p *PosEvalT) calcPieceInfluenceEval(pos uint8, color dragon.ColorT) EvalCp {
