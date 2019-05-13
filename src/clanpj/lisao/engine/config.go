@@ -33,7 +33,8 @@ var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
 var UseQKillerMoves = true
-var UseQDeepKillerMoves = true 
+var UseQDeepKillerMoves = true
+var UseBalancedEval = false
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {

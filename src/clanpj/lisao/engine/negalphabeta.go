@@ -311,6 +311,11 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 	bestMoveD0, rawEvalD0, _ := s.QSearchNegAlphaBeta(QSearchDepth, depthFromRoot, /*depthFromQRoot*/0, alpha, beta, eval0)
 	if(DEBUG) { fmt.Printf("                             %sD0 move %s alpha %6d beta %6d eval0 %6d eval %6d \n", strings.Repeat("  ", depthFromRoot), &bestMoveD0, alpha, beta, eval0, rawEvalD0) }
 
+	// Non-balanced eval
+	if(!UseBalancedEval) {
+		return bestMoveD0, rawEvalD0, 0
+	}
+
 	// Early out checkmate
 	if isCheckmateEval(rawEvalD0) {
 		return bestMoveD0, rawEvalD0, 0
