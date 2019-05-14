@@ -251,7 +251,7 @@ func (p *PositionalEvalT) squareEval(pos uint8) float64 {
 	}
 
 	// Treat bishops and knights as equal
-	isPwned, pwningColor = isPwnedByColor(inflW[dragon.Knight] + inflW[dragon.Bishop], inflW[dragon.Knight] + inflW[dragon.Bishop])
+	isPwned, pwningColor = isPwnedByColor(inflW[dragon.Knight] + inflW[dragon.Bishop], inflB[dragon.Knight] + inflB[dragon.Bishop])
 
 	if isPwned {
 		return squarePwnedBonusForColor(pwningColor)
