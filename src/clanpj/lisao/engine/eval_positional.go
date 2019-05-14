@@ -4,6 +4,7 @@ package engine
 
 import (
 	// "fmt"
+	"math"
 	"math/bits"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
@@ -59,7 +60,7 @@ func InitPositionalEval(board *dragon.Board, posEval *PositionalEvalT) {
 
 func (p *PositionalEvalT) initColor(color dragon.ColorT) {
 	p.initPawns(color)
-	p.initKnights(color)
+	p.initPieceType(color, dragon.Knight, (*PositionalEvalT).initKnight)
 	p.initBishops(color)
 	p.initRooks(color)
 	p.initQueens(color)
@@ -71,18 +72,18 @@ func (p *PositionalEvalT) initPawns(color dragon.ColorT) {
 		dragon.CalculatePawnsCaptureBitboard(p.board.Bbs[color][dragon.Pawn], color)
 }
 
-// TODO - this could be vastly collapsed using interfaces for per-piece type computation.
+// TODO - this could be vastly collapsed using interfaces for per-piece type computation - in progress
 
-func (p *PositionalEvalT) initKnights(color dragon.ColorT) {
-	knights := p.board.Bbs[color][dragon.Knight]
+func (p *PositionalEvalT) initPieceType(color dragon.ColorT, piece dragon.Piece, initFn func (*PositionalEvalT, dragon.ColorT, uint8)) {
+	pieces := p.board.Bbs[color][piece]
 
-	for knights != 0 {
-		pos := uint8(bits.TrailingZeros64(knights))
+	for pieces != 0 {
+		pos := uint8(bits.TrailingZeros64(pieces))
 		// (Could also use posBit-1 trick to clear the bit)
 		posBit := uint64(1) << uint(pos)
-		knights = knights ^ posBit
+		pieces = pieces ^ posBit
 
-		p.initKnight(color, pos)
+		initFn(p, color, pos)
 	}
 }
 
@@ -195,12 +196,12 @@ func (p *PositionalEvalT) initSquareInflenceForColor(color dragon.ColorT) {
 		posBit := uint64(1) << uint(pos)
 		allPieces = allPieces ^ posBit
 
-		p.initSquareInflenceForPiece(color, pos)
+		p.initSquareInfluenceForPiece(color, pos)
 	}
 	
 }
 	
-func (p *PositionalEvalT) initSquareInflenceForPiece(color dragon.ColorT, pos uint8) {
+func (p *PositionalEvalT) initSquareInfluenceForPiece(color dragon.ColorT, pos uint8) {
 	influenceBits := p.influenceByPiece[pos]
 	piece := p.board.PieceAt(pos)
 
@@ -210,7 +211,7 @@ func (p *PositionalEvalT) initSquareInflenceForPiece(color dragon.ColorT, pos ui
 		posBit := uint64(1) << uint(pos)
 		influenceBits = influenceBits ^ posBit
 
-		p.squareInfluence[pos][color][piece] ++
+		p.squareInfluence[pos][color][piece]++
 	}
 }
 
@@ -232,6 +233,7 @@ const pieceNumberReduction = 0.5
 // Reduction in bonus for each level of non-dominant piece types
 const pieceTypeReduction = 0.5
 
+// Valid for non-zero values only
 func absAndSignum(i int) (abs int, signum int) {
 	if i >= 0 {
 		abs = i
@@ -259,6 +261,75 @@ func squarePwnedBonus(diff int, pieceCategory uint8, reduction float64) float64 
 }
 
 func (p *PositionalEvalT) squareEval(pos uint8) float64 {
+	eval := p.squarePwnEval(pos)
+
+	piece := p.board.PieceAt(pos)
+	if piece != dragon.Nothing {
+		eval += p.pieceAttackDefenceEval(pos, piece)
+	}
+	
+	return eval
+}
+
+const protectedPieceEval = 0.5
+const hangingPieceEval = -0.1
+const lostPieceEval = -0.5
+
+func isLostPieceTrivial(piece dragon.Piece, inflThem *[dragon.NPieces+2]int) bool {
+	for pieceType := dragon.Pawn; pieceType < piece; pieceType++ {
+		if inflThem[pieceType] > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func isHangingPieceTrivial(piece dragon.Piece, inflUs *[dragon.NPieces+2]int, inflThem *[dragon.NPieces+2]int) bool {
+	for pieceType := dragon.Pawn; pieceType < dragon.NPieces; pieceType++ {
+		if inflUs[pieceType] > 0 || inflThem[pieceType] > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// Is this piece lost, protected or hanging and how serious is this
+func (p *PositionalEvalT) pieceAttackDefenceEval(pos uint8, piece dragon.Piece) float64 {
+	isWhite := p.board.Bbs[dragon.White][dragon.All] & (uint64(1) << pos) != 0 //p.board.isWhitePieceAt(pos)
+
+	var infl *[dragon.NColors][dragon.NPieces+2]int = &p.squareInfluence[pos]
+	var inflW *[dragon.NPieces+2]int = &infl[dragon.White]
+	var inflB *[dragon.NPieces+2]int = &infl[dragon.Black]
+
+	var inflUs = inflW
+	var inflThem = inflB
+	if !isWhite {
+		inflUs = inflB
+		inflThem = inflW
+	}
+
+	// Is this piece protected?
+	if isLostPieceTrivial(piece, inflThem) {
+		if isWhite {
+			return lostPieceEval
+		} else {
+			return -lostPieceEval
+		}
+	}
+
+	if isHangingPieceTrivial(piece, inflUs, inflThem) {
+		if isWhite {
+			return hangingPieceEval
+		} else {
+			return -hangingPieceEval
+		}
+	}
+	
+	return 0.0
+}
+
+// Which side controls this square and to what extent?
+func (p *PositionalEvalT) squarePwnEval(pos uint8) float64 {
 	var infl *[dragon.NColors][dragon.NPieces+2]int = &p.squareInfluence[pos]
 	var inflW *[dragon.NPieces+2]int = &infl[dragon.White]
 	var inflB *[dragon.NPieces+2]int = &infl[dragon.Black]
@@ -315,13 +386,13 @@ func (p *PositionalEvalT) squareEval(pos uint8) float64 {
 
 // Evaluation in centi-pawns of the positional influence matrix
 func (p *PositionalEvalT) Eval() EvalCp {
-	pwnedBonus := 0.0
+	eval := 0.0
 	for pos := uint8(0); pos < 64; pos++ {
-		pwnedBonus += p.squareEval(pos)
+		eval += p.squareEval(pos)
 	}
 
 	// Round to centipawns
-	return EvalCp(pwnedBonus*100.0) // Rounding?
+	return EvalCp(math.Round(eval*100.0)) // Rounding?
 }
 	
 // Cheap part of static eval by opportunistic delta eval.
