@@ -35,6 +35,7 @@ var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning ==
 var UseQKillerMoves = true
 var UseQDeepKillerMoves = true
 var UseBalancedEval = false
+var EvalAlgorithm = PositionalEval //PiecePosEval
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {

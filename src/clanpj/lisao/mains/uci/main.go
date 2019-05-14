@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.0pos-eval-2 Kung Pow 1" + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.0POS Kung Pow " + "CPU " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()

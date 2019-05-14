@@ -81,17 +81,35 @@ func NegaStaticEvalOrder0(board *dragon.Board) EvalCp {
 // Cheap part  - O(0) by delta eval - of static eval from white's perspective.
 // This is full evaluation - we prefer to do much cheaper delta evaluation.
 func StaticEvalOrder0(board *dragon.Board) EvalCp {
-	return StaticPiecePosEvalOrder0(board)
+	if EvalAlgorithm == PiecePosEval {
+		return StaticPiecePosEvalOrder0(board)
+	} else if EvalAlgorithm == PositionalEval {
+		return StaticPositionalEvalOrder0(board)
+	} else {
+		return DrawEval
+	}
 }
 
 // Cheap part of static eval by opportunistic delta eval.
 // Doing the easy case first and falling back to full eval until someone's more keen
 func NegaStaticEvalOrder0Fast(board *dragon.Board, prevEval0 EvalCp, moveInfo *dragon.BoardSaveT) EvalCp {
-	return NegaStaticPiecePosEvalOrder0Fast(board, prevEval0, moveInfo)
+	if EvalAlgorithm == PiecePosEval {
+		return NegaStaticPiecePosEvalOrder0Fast(board, prevEval0, moveInfo)
+	} else if EvalAlgorithm == PositionalEval {
+		return NegaStaticPositionalEvalOrder0Fast(board, prevEval0, moveInfo)
+	} else {
+		return DrawEval
+	}
 }
 
 // Expensive part - O(n) even with delta eval - of static eval from white's perspective.
 func StaticEvalOrderN(board *dragon.Board) EvalCp {
-	return StaticPiecePosEvalOrderN(board)
+	if EvalAlgorithm == PiecePosEval {
+		return StaticPiecePosEvalOrderN(board)
+	} else if EvalAlgorithm == PositionalEval {
+		return StaticPositionalEvalOrderN(board)
+	} else {
+		return DrawEval
+	}
 }
 
