@@ -41,7 +41,7 @@ type PositionalEvalT struct {
 
 	// What kind of piece pwns each square
 	// 2 extra entries for connected-bishops-behind-queen and connected-rooks-behind-queen respectively
-	squareInfluence [64][dragon.NColors][dragon.NPieces+2]uint8
+	squareInfluence [64][dragon.NColors][dragon.NPieces+2]int
 }
 
 // Initialise the positional evaluation for the given board.
@@ -215,69 +215,102 @@ func (p *PositionalEvalT) initSquareInflenceForPiece(color dragon.ColorT, pos ui
 }
 
 // Bonus for a side dominating a square - just a simple first metric
-const squarePwnedBonus = 0.1
+var squarePwnedByBonus = [9/*dragon.NPieces+2*/]float64 {
+	0.00, // Nothing
+	1.00, // Pawn
+	0.80, // Knight
+	0.80, // Bishop
+	0.65, // Rook
+	0.50, // Queen
+	0.30, // King
+	0.40, // BishopBehindQueen
+	0.40} // RookBehindQueen
 
-func squarePwnedBonusForColor(pwningColor dragon.ColorT) float64 {
-	if pwningColor == dragon.White {
-		return squarePwnedBonus
-	} else {
-		return -squarePwnedBonus
-	}
-}
+// Reduction for each dominance, e.g. dominating by 1 is 1.0, dominating by 2 is 1.0 + 0.5, by 3 is 1.0 + 0.5 + 0.25
+const pieceNumberReduction = 0.5
 
-func isPwnedByColor(nWhite uint8, nBlack uint8) (isPwned bool, pwningColor dragon.ColorT) {
-	pwningColor = dragon.White
-	
-	if nWhite == nBlack {
-		isPwned = false
+// Reduction in bonus for each level of non-dominant piece types
+const pieceTypeReduction = 0.5
+
+func absAndSignum(i int) (abs int, signum int) {
+	if i >= 0 {
+		abs = i
+		signum = 1
 	} else {
-		isPwned = true
-		if nWhite < nBlack {
-			pwningColor = dragon.Black
-		}
+		abs = -i
+		signum = -1
 	}
 	return
 }
 
+// diff is nWhite-nBlack
+func squarePwnedBonus(diff int, pieceCategory uint8, reduction float64) float64 {
+	baseBonus := squarePwnedByBonus[pieceCategory]
+	nPiecesExtra, signum := absAndSignum(diff)
+
+	bonus := 0.0
+
+	for nLeft := nPiecesExtra; nLeft > 0; nLeft-- {
+		bonus += baseBonus
+		baseBonus *= pieceNumberReduction
+	}
+
+	return bonus * reduction * float64(signum)
+}
+
 func (p *PositionalEvalT) squareEval(pos uint8) float64 {
-	var infl *[dragon.NColors][dragon.NPieces+2]uint8 = &p.squareInfluence[pos]
-	var inflW *[dragon.NPieces+2]uint8 = &infl[dragon.White]
-	var inflB *[dragon.NPieces+2]uint8 = &infl[dragon.Black]
+	var infl *[dragon.NColors][dragon.NPieces+2]int = &p.squareInfluence[pos]
+	var inflW *[dragon.NPieces+2]int = &infl[dragon.White]
+	var inflB *[dragon.NPieces+2]int = &infl[dragon.Black]
 
-	isPwned, pwningColor := isPwnedByColor(inflW[dragon.Pawn], inflB[dragon.Pawn])
+	eval := 0.0
+	reduction := 1.0
 
-	if isPwned {
-		return squarePwnedBonusForColor(pwningColor)
+	// Pawns
+	pawnDiff := inflW[dragon.Pawn] - inflB[dragon.Pawn]
+
+	if pawnDiff != 0 {
+		eval += squarePwnedBonus(pawnDiff, uint8(dragon.Pawn), reduction)
+		reduction *= pieceTypeReduction
 	}
 
-	// Treat bishops and knights as equal
-	isPwned, pwningColor = isPwnedByColor(inflW[dragon.Knight] + inflW[dragon.Bishop], inflW[dragon.Knight] + inflW[dragon.Bishop])
+	// Bishops and knights as equal parties
+	knightAndBishopDiff := (inflW[dragon.Knight] + inflW[dragon.Bishop]) - (inflB[dragon.Knight] + inflB[dragon.Bishop])
 
-	if isPwned {
-		return squarePwnedBonusForColor(pwningColor)
-	}
-	
-	isPwned, pwningColor = isPwnedByColor(inflW[dragon.Rook], inflB[dragon.Rook])
-
-	if isPwned {
-		return squarePwnedBonusForColor(pwningColor)
+	if knightAndBishopDiff != 0 {
+		eval += squarePwnedBonus(knightAndBishopDiff, uint8(dragon.Knight), reduction)
+		reduction *= pieceTypeReduction
 	}
 
-	isPwned, pwningColor = isPwnedByColor(inflW[dragon.Queen], inflB[dragon.Queen])
+	// Rooks
+	rookDiff := inflW[dragon.Rook] - inflB[dragon.Rook]
 
-	if isPwned {
-		return squarePwnedBonusForColor(pwningColor)
+	if rookDiff != 0 {
+		eval += squarePwnedBonus(rookDiff, uint8(dragon.Rook), reduction)
+		reduction *= pieceTypeReduction
 	}
 
+	// Queens
+	queenDiff := inflW[dragon.Queen] - inflB[dragon.Queen]
+
+	if queenDiff != 0 {
+		eval += squarePwnedBonus(queenDiff, uint8(dragon.Queen), reduction)
+		reduction *= pieceTypeReduction
+	}
+
+	//
 	// TODO connnected weak pieces
-	
-	isPwned, pwningColor = isPwnedByColor(inflW[dragon.King], inflB[dragon.King])
+	//
 
-	if isPwned {
-		return squarePwnedBonusForColor(pwningColor)
+	// Kings
+	kingDiff := inflW[dragon.King] - inflB[dragon.King]
+
+	if kingDiff != 0 {
+		eval += squarePwnedBonus(kingDiff, uint8(dragon.King), reduction)
+		reduction *= pieceTypeReduction
 	}
 
-	return 0.0
+	return eval
 }
 
 // Evaluation in centi-pawns of the positional influence matrix

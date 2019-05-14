@@ -4,3 +4,8 @@ src/*
 !src/clanpj
 *.exe
 *~
+*.out
+*.fen
+*.txt
+*.pprof
+*.log
