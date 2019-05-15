@@ -409,9 +409,14 @@ func StaticPositionalEvalOrder0(board *dragon.Board) EvalCp {
 
 // Expensive part - O(n)+ - of static eval from white's perspective.
 func StaticPositionalEvalOrderN(board *dragon.Board) EvalCp {
+	whitePiecesEval := piecesEval(&board.Bbs[dragon.White])
+	blackPiecesEval := piecesEval(&board.Bbs[dragon.Black])
+
+	piecesEval := whitePiecesEval - blackPiecesEval
+	
 	var positionalEval PositionalEvalT
 	InitPositionalEval(board, &positionalEval)
 
-	return positionalEval.Eval()
+	return piecesEval + positionalEval.Eval()
 }
 
