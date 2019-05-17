@@ -260,12 +260,14 @@ func squarePwnedBonus(diff int, pieceCategory uint8, reduction float64) float64 
 	return bonus * reduction * float64(signum)
 }
 
+const attackDefenseEvalScale = 0.0
+
 func (p *PositionalEvalT) squareEval(pos uint8) float64 {
 	eval := p.squarePwnEval(pos)
 
 	piece := p.board.PieceAt(pos)
 	if piece != dragon.Nothing {
-		eval += p.pieceAttackDefenceEval(pos, piece)
+		eval += p.pieceAttackDefenceEval(pos, piece) * attackDefenseEvalScale
 	}
 	
 	return eval
@@ -384,12 +386,16 @@ func (p *PositionalEvalT) squarePwnEval(pos uint8) float64 {
 	return eval
 }
 
+const posEvalScale = 0.3
+
 // Evaluation in centi-pawns of the positional influence matrix
 func (p *PositionalEvalT) Eval() EvalCp {
 	eval := 0.0
 	for pos := uint8(0); pos < 64; pos++ {
 		eval += p.squareEval(pos)
 	}
+
+	eval *= posEvalScale
 
 	// Round to centipawns
 	return EvalCp(math.Round(eval*100.0)) // Rounding?
@@ -407,16 +413,22 @@ func StaticPositionalEvalOrder0(board *dragon.Board) EvalCp {
 	return DrawEval
 }
 
+const includePiecesEval = true
+
 // Expensive part - O(n)+ - of static eval from white's perspective.
 func StaticPositionalEvalOrderN(board *dragon.Board) EvalCp {
-	whitePiecesEval := piecesEval(&board.Bbs[dragon.White])
-	blackPiecesEval := piecesEval(&board.Bbs[dragon.Black])
+	piecesVal := EvalCp(0)
 
-	piecesEval := whitePiecesEval - blackPiecesEval
+	if includePiecesEval {
+		whitePiecesEval := piecesEval(&board.Bbs[dragon.White])
+		blackPiecesEval := piecesEval(&board.Bbs[dragon.Black])
+		
+		piecesVal = whitePiecesEval - blackPiecesEval
+	}
 	
 	var positionalEval PositionalEvalT
 	InitPositionalEval(board, &positionalEval)
 
-	return piecesEval + positionalEval.Eval()
+	return EvalCp(piecesVal) + positionalEval.Eval()
 }
 
