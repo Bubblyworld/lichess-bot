@@ -24,7 +24,7 @@ var UseIDMoveHintAlways = true
 var MinIDMoveHintDepth = 2
 var UseTT = true
 var UseDeepTT = true // worse than not using?
-var HeurUseTTDeeperHits = false //true // true iff we embrace deeper TT results as valid (heuristic!)
+var HeurUseTTDeeperHits = true // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
 var QSearchDepth = 12
 var UseQSearchTT = true
@@ -34,7 +34,7 @@ var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == t
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
 var UseQKillerMoves = true
 var UseQDeepKillerMoves = true
-var UseBalancedEval = false
+var UseBalancedEval = true
 var EvalAlgorithm = PositionalEval //PiecePosEval
 
 func SearchAlgorithmString() string {
