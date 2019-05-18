@@ -60,11 +60,14 @@ func InitPositionalEval(board *dragon.Board, posEval *PositionalEvalT) {
 
 func (p *PositionalEvalT) initColor(color dragon.ColorT) {
 	p.initPawns(color)
-	p.initPieceType(color, dragon.Knight, (*PositionalEvalT).initKnight)
-	p.initBishops(color)
-	p.initRooks(color)
-	p.initQueens(color)
-	p.initKings(color)
+	p.initPieceType(color, dragon.Knight, dragon.KnightMovesBitboard)
+	p.initPieceType(color, dragon.Bishop, func (pos uint8) uint64 { return dragon.CalculateBishopMoveBitboard(pos, p.allPieces) })
+	p.initPieceType(color, dragon.Rook, func (pos uint8) uint64 { return dragon.CalculateRookMoveBitboard(pos, p.allPieces) })
+	p.initPieceType(color, dragon.Queen, func (pos uint8) uint64 {
+		return dragon.CalculateBishopMoveBitboard(pos, p.allPieces) |
+			dragon.CalculateRookMoveBitboard(pos, p.allPieces)
+	})
+	p.initPieceType(color, dragon.King, dragon.KingMovesBitboard)
 }
 
 func (p *PositionalEvalT) initPawns(color dragon.ColorT) {
@@ -72,9 +75,7 @@ func (p *PositionalEvalT) initPawns(color dragon.ColorT) {
 		dragon.CalculatePawnsCaptureBitboard(p.board.Bbs[color][dragon.Pawn], color)
 }
 
-// TODO - this could be vastly collapsed using interfaces for per-piece type computation - in progress
-
-func (p *PositionalEvalT) initPieceType(color dragon.ColorT, piece dragon.Piece, initFn func (*PositionalEvalT, dragon.ColorT, uint8)) {
+func (p *PositionalEvalT) initPieceType(color dragon.ColorT, piece dragon.Piece, influenceFn func (pos uint8) (influence uint64)) {
 	pieces := p.board.Bbs[color][piece]
 
 	for pieces != 0 {
@@ -83,92 +84,8 @@ func (p *PositionalEvalT) initPieceType(color dragon.ColorT, piece dragon.Piece,
 		posBit := uint64(1) << uint(pos)
 		pieces = pieces ^ posBit
 
-		initFn(p, color, pos)
+		p.influenceByPiece[pos] = influenceFn(pos)
 	}
-}
-
-func (p *PositionalEvalT) initKnight(color dragon.ColorT, pos uint8) {
-	influence := dragon.KnightMovesBitboard(pos)
-	
-	p.influenceByPiece[pos] = influence
-}
-
-func (p *PositionalEvalT) initBishops(color dragon.ColorT) {
-	bishops := p.board.Bbs[color][dragon.Bishop]
-
-	for bishops != 0 {
-		pos := uint8(bits.TrailingZeros64(bishops))
-		// (Could also use posBit-1 trick to clear the bit)
-		posBit := uint64(1) << uint(pos)
-		bishops = bishops ^ posBit
-
-		p.initBishop(color, pos)
-	}
-}
-
-func (p *PositionalEvalT) initBishop(color dragon.ColorT, pos uint8) {
-	influence := dragon.CalculateBishopMoveBitboard(uint8(pos), p.allPieces)
-	
-	p.influenceByPiece[pos] = influence
-}
-
-func (p *PositionalEvalT) initRooks(color dragon.ColorT) {
-	rooks := p.board.Bbs[color][dragon.Rook]
-
-	for rooks != 0 {
-		pos := uint8(bits.TrailingZeros64(rooks))
-		// (Could also use posBit-1 trick to clear the bit)
-		posBit := uint64(1) << uint(pos)
-		rooks = rooks ^ posBit
-
-		p.initRook(color, pos)
-	}
-}
-
-func (p *PositionalEvalT) initRook(color dragon.ColorT, pos uint8) {
-	influence := dragon.CalculateRookMoveBitboard(uint8(pos), p.allPieces)
-	
-	p.influenceByPiece[pos] = influence
-}
-
-
-func (p *PositionalEvalT) initQueens(color dragon.ColorT) {
-	queens := p.board.Bbs[color][dragon.Queen]
-
-	for queens != 0 {
-		pos := uint8(bits.TrailingZeros64(queens))
-		// (Could also use posBit-1 trick to clear the bit)
-		posBit := uint64(1) << uint(pos)
-		queens = queens ^ posBit
-
-		p.initQueen(color, pos)
-	}
-}
-
-func (p *PositionalEvalT) initQueen(color dragon.ColorT, pos uint8) {
-	influence := dragon.CalculateBishopMoveBitboard(uint8(pos), p.allPieces) |
-		dragon.CalculateRookMoveBitboard(uint8(pos), p.allPieces)
-	
-	p.influenceByPiece[pos] = influence
-}
-
-func (p *PositionalEvalT) initKings(color dragon.ColorT) {
-	kings := p.board.Bbs[color][dragon.King]
-
-	for kings != 0 {
-		pos := uint8(bits.TrailingZeros64(kings))
-		// (Could also use posBit-1 trick to clear the bit)
-		posBit := uint64(1) << uint(pos)
-		kings = kings ^ posBit
-
-		p.initKing(color, pos)
-	}
-}
-
-func (p *PositionalEvalT) initKing(color dragon.ColorT, pos uint8) {
-	influence := dragon.KingMovesBitboard(pos)
-	
-	p.influenceByPiece[pos] = influence
 }
 
 // Invert the piece-wise influence bitmaps to produce a square-wise influence map of the board.
