@@ -215,6 +215,76 @@ func (p *PositionalEvalT) initSquareInfluenceForPiece(color dragon.ColorT, pos u
 	}
 }
 
+///////////////////////////// Old version that does surprisingly well /////////////////////////////////////
+
+// Bonus for a side dominating a square - just a simple first metric
+const squarePwnedBonusOld = 0.1
+
+func squarePwnedBonusForColorOld(pwningColor dragon.ColorT) float64 {
+	if pwningColor == dragon.White {
+		return squarePwnedBonusOld
+	} else {
+		return -squarePwnedBonusOld
+	}
+}
+
+func isPwnedByColorOld(nWhite int, nBlack int) (isPwned bool, pwningColor dragon.ColorT) {
+	pwningColor = dragon.White
+	
+	if nWhite == nBlack {
+		isPwned = false
+	} else {
+		isPwned = true
+		if nWhite < nBlack {
+			pwningColor = dragon.Black
+		}
+	}
+	return
+}
+
+func (p *PositionalEvalT) squareEvalOld(pos uint8) float64 {
+	var infl *[dragon.NColors][dragon.NPieces+2]int = &p.squareInfluence[pos]
+	var inflW *[dragon.NPieces+2]int = &infl[dragon.White]
+	var inflB *[dragon.NPieces+2]int = &infl[dragon.Black]
+
+	isPwned, pwningColor := isPwnedByColorOld(inflW[dragon.Pawn], inflB[dragon.Pawn])
+
+	if isPwned {
+		return squarePwnedBonusForColorOld(pwningColor)
+	}
+
+	// Treat bishops and knights as equal
+	isPwned, pwningColor = isPwnedByColorOld(inflW[dragon.Knight] + inflW[dragon.Bishop], inflB[dragon.Knight] + inflB[dragon.Bishop])
+
+	if isPwned {
+		return squarePwnedBonusForColorOld(pwningColor)
+	}
+	
+	isPwned, pwningColor = isPwnedByColorOld(inflW[dragon.Rook], inflB[dragon.Rook])
+
+	if isPwned {
+		return squarePwnedBonusForColorOld(pwningColor)
+	}
+
+	isPwned, pwningColor = isPwnedByColorOld(inflW[dragon.Queen], inflB[dragon.Queen])
+
+	if isPwned {
+		return squarePwnedBonusForColorOld(pwningColor)
+	}
+
+	// TODO connnected weak pieces
+	
+	isPwned, pwningColor = isPwnedByColorOld(inflW[dragon.King], inflB[dragon.King])
+
+	if isPwned {
+		return squarePwnedBonusForColorOld(pwningColor)
+	}
+
+	return 0.0
+}
+
+//////////////////////////////////// END old version that does surprisingly well ///////////////////////////////////////
+
 // Bonus for a side dominating a square - just a simple first metric
 var squarePwnedByBonus = [9/*dragon.NPieces+2*/]float64 {
 	0.00, // Nothing
@@ -227,37 +297,43 @@ var squarePwnedByBonus = [9/*dragon.NPieces+2*/]float64 {
 	0.40, // BishopBehindQueen
 	0.40} // RookBehindQueen
 
-// Reduction for each dominance, e.g. dominating by 1 is 1.0, dominating by 2 is 1.0 + 0.5, by 3 is 1.0 + 0.5 + 0.25
-const pieceNumberReduction = 0.5
-
 // Reduction in bonus for each level of non-dominant piece types
 const pieceTypeReduction = 0.5
 
-// Valid for non-zero values only
-func absAndSignum(i int) (abs int, signum int) {
-	if i >= 0 {
-		abs = i
-		signum = 1
-	} else {
-		abs = -i
-		signum = -1
-	}
-	return
-}
+// Maximum excess of black pieces that can be attacking a square (basically worst case is 10 rooks after 8 pawns promote to rooks :D )
+const maxAbsDiff = 10
+
+// Bonus for a side dominating a square - just a simple first metric
+var squarePwnedByDiffNBonus = [maxAbsDiff + 1 + maxAbsDiff]float64 {
+        -1.1, // -10
+        -1.1, // -9
+        -1.1, // -8
+        -1.1, // -7
+        -1.1, // -6
+        -1.1, // -5
+        -1.1, // -4
+        -1.1, // -3
+        -1.1, // -2
+        -1.0, // -1
+        -0.0, // 0.0 unused
+        1.0, // -1
+        1.1, // -2
+        1.1, // -93
+        1.1, // -4
+        1.1, // -5
+        1.1, // -6
+        1.1, // -7
+        1.1, // -8
+        1.1, // -9
+	1.1} // -10
+
 
 // diff is nWhite-nBlack
 func squarePwnedBonus(diff int, pieceCategory uint8, reduction float64) float64 {
 	baseBonus := squarePwnedByBonus[pieceCategory]
-	nPiecesExtra, signum := absAndSignum(diff)
+	diffBonus := squarePwnedByDiffNBonus[diff + maxAbsDiff]
 
-	bonus := 0.0
-
-	for nLeft := nPiecesExtra; nLeft > 0; nLeft-- {
-		bonus += baseBonus
-		baseBonus *= pieceNumberReduction
-	}
-
-	return bonus * reduction * float64(signum)
+	return baseBonus*diffBonus
 }
 
 const attackDefenseEvalScale = 0.0
@@ -392,13 +468,13 @@ const posEvalScale = 0.3
 func (p *PositionalEvalT) Eval() EvalCp {
 	eval := 0.0
 	for pos := uint8(0); pos < 64; pos++ {
-		eval += p.squareEval(pos)
+		eval += p.squareEval(pos) //p.squareEvalOld(pos)
 	}
 
 	eval *= posEvalScale
 
 	// Round to centipawns
-	return EvalCp(math.Round(eval*100.0)) // Rounding?
+	return EvalCp(math.Round(eval*100.0))
 }
 	
 // Cheap part of static eval by opportunistic delta eval.
@@ -413,7 +489,7 @@ func StaticPositionalEvalOrder0(board *dragon.Board) EvalCp {
 	return DrawEval
 }
 
-const includePiecesEval = true
+const includePiecesEval = false //true
 
 // Expensive part - O(n)+ - of static eval from white's perspective.
 func StaticPositionalEvalOrderN(board *dragon.Board) EvalCp {
