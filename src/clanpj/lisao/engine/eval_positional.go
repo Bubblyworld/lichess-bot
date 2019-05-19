@@ -145,7 +145,7 @@ var squarePwnedByBonus = [9/*dragon.NPieces+2*/]float64 {
 	0.40} // RookBehindQueen
 
 // Reduction in bonus for each level of non-dominant piece types
-const pieceTypeReduction = 0.25
+const pieceTypeReduction = 0.5
 
 // Maximum excess of black pieces that can be attacking a square (basically worst case is 10 rooks after 8 pawns promote to rooks :D )
 const maxAbsDiff = 10
