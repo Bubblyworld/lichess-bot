@@ -145,7 +145,7 @@ var squarePwnedByBonus = [9/*dragon.NPieces+2*/]float64 {
 	0.40} // RookBehindQueen
 
 // Reduction in bonus for each level of non-dominant piece types
-const pieceTypeReduction = 0.375
+const pieceTypeReduction = 0.25
 
 // Maximum excess of black pieces that can be attacking a square (basically worst case is 10 rooks after 8 pawns promote to rooks :D )
 const maxAbsDiff = 10
@@ -324,6 +324,48 @@ func (p *PositionalEvalT) Eval() EvalCp {
 	// Round to centipawns
 	return EvalCp(math.Round(eval*100.0))
 }
+
+// Pawn rank bonuses (from white's perspective)
+var pawnRankBonus = [8]float64 {
+	0.0,
+	-0.15,
+	-0.07,
+	0.04,
+	0.11,
+	0.29,
+	0.85,
+	0.0}
+
+const pawnRankBonusScale = 1.0
+
+func rank(pos uint8) uint8 { return pos >> 3; }
+	
+func pawnRankEval(wPawns uint64, bPawns uint64) EvalCp {
+	eval := 0.0
+
+	for wPawns != 0 {
+		pos := uint8(bits.TrailingZeros64(wPawns))
+		// (Could also use posBit-1 trick to clear the bit)
+		posBit := uint64(1) << uint(pos)
+		wPawns = wPawns ^ posBit
+
+		eval += pawnRankBonus[rank(pos)]
+	}
+	
+	for bPawns != 0 {
+		pos := uint8(bits.TrailingZeros64(bPawns))
+		// (Could also use posBit-1 trick to clear the bit)
+		posBit := uint64(1) << uint(pos)
+		bPawns = bPawns ^ posBit
+
+		eval -= pawnRankBonus[7-rank(pos)]
+	}
+	
+	// Round to centipawns
+	return EvalCp(math.Round(eval*pawnRankBonusScale*100.0))
+}
+
+
 	
 // Cheap part of static eval by opportunistic delta eval.
 // We don't do anything here (for now).
@@ -338,21 +380,27 @@ func StaticPositionalEvalOrder0(board *dragon.Board) EvalCp {
 }
 
 const includePiecesEval = true
+const includePawnRankEval = true
 
 // Expensive part - O(n)+ - of static eval from white's perspective.
 func StaticPositionalEvalOrderN(board *dragon.Board) EvalCp {
 	piecesVal := EvalCp(0)
 
 	if includePiecesEval {
-		whitePiecesEval := piecesEval(&board.Bbs[dragon.White])
-		blackPiecesEval := piecesEval(&board.Bbs[dragon.Black])
+		whitePiecesVal := piecesEval(&board.Bbs[dragon.White])
+		blackPiecesVal := piecesEval(&board.Bbs[dragon.Black])
 		
-		piecesVal = whitePiecesEval - blackPiecesEval
+		piecesVal = whitePiecesVal - blackPiecesVal
+	}
+
+	pawnRankVal := EvalCp(0)
+	if includePawnRankEval {
+		pawnRankVal = pawnRankEval(board.Bbs[dragon.White][dragon.Pawn], board.Bbs[dragon.Black][dragon.Pawn])
 	}
 	
 	var positionalEval PositionalEvalT
 	InitPositionalEval(board, &positionalEval)
 
-	return EvalCp(piecesVal) + positionalEval.Eval()
+	return piecesVal + pawnRankVal + positionalEval.Eval()
 }
 
