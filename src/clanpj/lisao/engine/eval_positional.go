@@ -10,6 +10,93 @@ import (
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
+func rank(pos uint8) uint8 { return pos >> 3; }
+func file(pos uint8) uint8 { return pos & 7; }
+
+var rankBits = [8]uint64 {
+	0xff00000000000000,
+	0x00ff000000000000,
+	0x0000ff0000000000,
+	0x000000ff00000000,
+	0x00000000ff000000,
+	0x0000000000ff0000,
+	0x000000000000ff00,
+	0x00000000000000ff}
+
+var fileBits = [8]uint64 {
+	0x8080808080808080,
+	0x4040404040404040,
+	0x2020202020202020,
+	0x1010101010101010,
+	0x0808080808080808,
+	0x0404040404040404,
+	0x0202020202020202,
+	0x0101010101010101}
+
+func rankBitsForPos(pos uint8) uint64 {
+	r := rank(pos)
+	return rankBits[r]
+}
+
+func fileBitsForPos(pos uint8) uint64 {
+	f := file(pos)
+	return fileBits[f]
+}
+
+var nwDiagBits [16]uint64
+var neDiagBits [16]uint64
+
+func nwIndexForPos(pos uint8) uint8 {
+	r := rank(pos)
+	f := file(pos)
+
+	return r + f
+}
+
+func neIndexForPos(pos uint8) uint8 {
+	r := rank(pos)
+	f := file(pos)
+
+	return 8 + r - f
+}
+
+func initNwDiag(i uint8) {
+	for pos := uint8(0); pos < 64; pos++ {
+		nwIndex := nwIndexForPos(pos)
+
+		if nwIndex == i {
+			nwDiagBits[nwIndex] |= (uint64(1) << pos)
+		}
+	}
+}
+
+func initNeDiag(i uint8) {
+	for pos := uint8(0); pos < 64; pos++ {
+		neIndex := neIndexForPos(pos)
+
+		if neIndex == i {
+			neDiagBits[i] |= (uint64(1) << pos)
+		}
+	}
+}
+
+func init() {
+	for i := uint8(0); i < 16; i++ {
+		initNwDiag(i)
+		initNeDiag(i)
+	}
+}
+
+func nwDiagBitsForPos(pos uint8) uint64 {
+	nwIndex := nwIndexForPos(pos)
+	return nwDiagBits[nwIndex]
+}
+
+func neDiagBitsForPos(pos uint8) uint64 {
+	neIndex := neIndexForPos(pos)
+	return neDiagBits[neIndex]
+}
+
 // Pawn attack directions
 type PawnAttackDirT uint8
 const (
@@ -37,6 +124,9 @@ type PositionalEvalT struct {
 	// NB: Does NOT include pawns (because we calculate pawn influence en-masse by color).
 	influenceByPiece [64]uint64;
 
+	// The 'influence' of each piece, through a connected queen (only valid for Bishops and Rooks)
+	influenceBehindQueenByPiece [64]uint64;
+	
 	// Squares attacked by pawns of each color, east and west respectively.
 	pawnAttacks [dragon.NColors][NAttackDirs]uint64;
 
@@ -61,12 +151,15 @@ func InitPositionalEval(board *dragon.Board, posEval *PositionalEvalT) {
 func (p *PositionalEvalT) initColor(color dragon.ColorT) {
 	p.initPawns(color)
 	p.initPieceType(color, dragon.Knight, dragon.KnightMovesBitboard)
-	p.initPieceType(color, dragon.Bishop, func (pos uint8) uint64 { return dragon.CalculateBishopMoveBitboard(pos, p.allPieces) })
-	p.initPieceType(color, dragon.Rook, func (pos uint8) uint64 { return dragon.CalculateRookMoveBitboard(pos, p.allPieces) })
+	p.initBishops(color)
+	p.initRooks(color)
 	p.initPieceType(color, dragon.Queen, func (pos uint8) uint64 {
 		return dragon.CalculateBishopMoveBitboard(pos, p.allPieces) |
 			dragon.CalculateRookMoveBitboard(pos, p.allPieces)
 	})
+	// Queen influence through Bishops and Rooks
+	//   and Bishop/Rook influence through (behind) Queens
+	p.initConnectedQueensAndMinorSliders(color)
 	p.initPieceType(color, dragon.King, dragon.KingMovesBitboard)
 }
 
@@ -88,21 +181,206 @@ func (p *PositionalEvalT) initPieceType(color dragon.ColorT, piece dragon.Piece,
 	}
 }
 
+func (p *PositionalEvalT) accumulateConnectorInfluence(lineConnectors uint64, line uint64, influence uint64) uint64 {
+	lineInfluence := influence & line
+		
+	linePieces := lineConnectors
+	for linePieces != 0 {
+		pos := uint8(bits.TrailingZeros64(linePieces))
+		// (Could also use posBit-1 trick to clear the bit)
+		posBit := uint64(1) << uint(pos)
+		linePieces = linePieces ^ posBit
+		
+		lineInfluence |= p.influenceByPiece[pos] & line
+	}
+
+	return lineInfluence
+}
+
+func (p *PositionalEvalT) processConnectors(pos uint8, lowerPieces uint64, line uint64, influence uint64) {
+	lineConnectors := lowerPieces & line & influence
+
+	if lineConnectors != 0 {
+		// Merge all line influence bits
+		lineInfluence := p.accumulateConnectorInfluence(lineConnectors, line, influence)
+
+		// Add back merged line influence to this piece
+		p.influenceByPiece[pos] |= lineInfluence
+		
+		// Add back merged line influence bits to all connected pieces
+		linePieces := lineConnectors
+		for linePieces != 0 {
+			pos := uint8(bits.TrailingZeros64(linePieces))
+			// (Could also use posBit-1 trick to clear the bit)
+			posBit := uint64(1) << uint(pos)
+			linePieces = linePieces ^ posBit
+			
+			p.influenceByPiece[pos] |= lineInfluence
+		}
+	}
+}
+
+// Initialise bishop influence including connected bishops
+func (p *PositionalEvalT) initBishops(color dragon.ColorT) {
+	allBishops := p.board.Bbs[color][dragon.Bishop]
+	bishops := allBishops
+
+	for bishops != 0 {
+		pos := uint8(bits.TrailingZeros64(bishops))
+		// (Could also use posBit-1 trick to clear the bit)
+		posBit := uint64(1) << uint(pos)
+		bishops = bishops ^ posBit
+
+		influence := dragon.CalculateBishopMoveBitboard(pos, p.allPieces)
+		p.influenceByPiece[pos] = influence
+
+		// Look for connected Bishops - this can only happen if there was a promotion to Bishop :D
+
+		lowerPosBits := posBit - 1
+		lowerBishops := allBishops & lowerPosBits
+
+		// Connected bishops on the NW diagonal
+		nwDiag := nwDiagBitsForPos(pos)
+		p.processConnectors(pos, lowerBishops, nwDiag, influence)
+
+		// Connected bishops on the NE diagonal
+		neDiag := neDiagBitsForPos(pos)
+		p.processConnectors(pos, lowerBishops, neDiag, influence)
+	}
+}
+
+// Initialise rook influence including connected rooks
+func (p *PositionalEvalT) initRooks(color dragon.ColorT) {
+	allRooks := p.board.Bbs[color][dragon.Rook]
+	rooks := allRooks
+
+	for rooks != 0 {
+		pos := uint8(bits.TrailingZeros64(rooks))
+		// (Could also use posBit-1 trick to clear the bit)
+		posBit := uint64(1) << uint(pos)
+		rooks = rooks ^ posBit
+
+		influence := dragon.CalculateRookMoveBitboard(pos, p.allPieces)
+		p.influenceByPiece[pos] = influence
+
+		lowerPosBits := posBit - 1
+		lowerRooks := allRooks & lowerPosBits
+
+		// Connected rooks on the same rank
+		rankBits := rankBitsForPos(pos)
+		p.processConnectors(pos, lowerRooks, rankBits, influence)
+
+		// Connected rooks on the same file
+		fileBits := fileBitsForPos(pos)
+		p.processConnectors(pos, lowerRooks, fileBits, influence)
+	}
+}
+
+// Initialise queen influence including connected queens, bishops and rooks
+func (p *PositionalEvalT) initQueens(color dragon.ColorT) {
+	allQueens := p.board.Bbs[color][dragon.Queen]
+	queens := allQueens
+
+	for queens != 0 {
+		pos := uint8(bits.TrailingZeros64(queens))
+		// (Could also use posBit-1 trick to clear the bit)
+		posBit := uint64(1) << uint(pos)
+		queens = queens ^ posBit
+
+		influence := dragon.CalculateQueenMoveBitboard(pos, p.allPieces)
+		p.influenceByPiece[pos] = influence
+
+		// Look for connected Queens - only possible if there are multiple queens on the board
+
+		lowerPosBits := posBit - 1
+		lowerQueens := allQueens & lowerPosBits
+
+		// Connected queens on the same rank
+		rankBits := rankBitsForPos(pos)
+		p.processConnectors(pos, lowerQueens, rankBits, influence)
+
+		// Connected queens on the same file
+		fileBits := fileBitsForPos(pos)
+		p.processConnectors(pos, lowerQueens, fileBits, influence)
+
+		// Connected queens on the NW diagonal
+		nwDiag := nwDiagBitsForPos(pos)
+		p.processConnectors(pos, lowerQueens, nwDiag, influence)
+
+		// Connected queens on the NE diagonal
+		neDiag := neDiagBitsForPos(pos)
+		p.processConnectors(pos, lowerQueens, neDiag, influence)
+	}
+}
+
+func (p *PositionalEvalT) processMinorConnectors(pos uint8, allMinorPieces uint64, line uint64, influence uint64) {
+	lineConnectors := allMinorPieces & line & influence
+
+	if lineConnectors != 0 {
+		// Merge all line influence bits
+		lineInfluence := p.accumulateConnectorInfluence(lineConnectors, line, influence)
+
+		// Add the accumulated influence to this queen
+		p.influenceByPiece[pos] |= lineInfluence
+
+		// The minor connectors get additional influence as 'behind queen' influence
+		linePieces := lineConnectors
+		for linePieces != 0 {
+			pos := uint8(bits.TrailingZeros64(linePieces))
+			// (Could also use posBit-1 trick to clear the bit)
+			posBit := uint64(1) << uint(pos)
+			linePieces = linePieces ^ posBit
+			
+			p.influenceBehindQueenByPiece[pos] |= lineInfluence & ^p.influenceByPiece[pos]
+		}
+	}
+}
+
+
+// Initialise queen influence through bishops and rooks (and vice versa)
+func (p *PositionalEvalT) initConnectedQueensAndMinorSliders(color dragon.ColorT) {
+	allQueens := p.board.Bbs[color][dragon.Queen]
+	allRooks := p.board.Bbs[color][dragon.Rook]
+	allBishops := p.board.Bbs[color][dragon.Bishop]
+	
+	queens := allQueens
+
+	for queens != 0 {
+		pos := uint8(bits.TrailingZeros64(queens))
+		// (Could also use posBit-1 trick to clear the bit)
+		posBit := uint64(1) << uint(pos)
+		queens = queens ^ posBit
+
+		influence := dragon.CalculateQueenMoveBitboard(pos, p.allPieces)
+		p.influenceByPiece[pos] = influence
+
+		// Look for connected minor sliders
+
+		// Connected rooks on the same rank
+		rankBits := rankBitsForPos(pos)
+		p.processMinorConnectors(pos, allRooks, rankBits, influence)
+
+		// Connected rooks on the same file
+		fileBits := fileBitsForPos(pos)
+		p.processMinorConnectors(pos, allRooks, fileBits, influence)
+
+		// Connected bishops on the NW diagonal
+		nwDiag := nwDiagBitsForPos(pos)
+		p.processConnectors(pos, allBishops, nwDiag, influence)
+
+		// Connected queens on the NE diagonal
+		neDiag := neDiagBitsForPos(pos)
+		p.processConnectors(pos, allBishops, neDiag, influence)
+	}
+}
+
+
 // Invert the piece-wise influence bitmaps to produce a square-wise influence map of the board.
 func (p *PositionalEvalT) initSquareInflence() {
-	// Direct influence
+	// Direct influence and influence through connected pieces
 	p.initSquareInflenceForColor(dragon.White)
 	p.initSquareInflenceForColor(dragon.Black)
-
-	// Add connected piece influence
-	p.initConnectedPieceInfluence()
 }
-
-// Add the influence of connected pieces which influence 'through' their connected partners (Alekhine's gun)
-func (p *PositionalEvalT) initConnectedPieceInfluence() {
-	// TODO
-}
-
 
 func (p *PositionalEvalT) initSquareInflenceForColor(color dragon.ColorT) {
 	allPieces := p.board.Bbs[color][dragon.All]
@@ -185,12 +463,34 @@ func squarePwnedBonus(diff int, pieceCategory uint8, reduction float64) float64 
 
 const attackDefenseEvalScale = 0.0
 
+const useBoardZone = true
+
+const z1 = 1.2
+const z2 = 1.125
+const z3 = 1.0
+const z4 = 0.9375
+
+// Focus on the center of the board
+var zoneFactor = [64]float64 {
+	z4, z4, z4, z4, z4, z4, z4, z4,
+	z4, z3, z3, z3, z3, z3, z3, z4,
+	z4, z3, z2, z2, z2, z2, z3, z4,
+	z4, z3, z2, z1, z1, z2, z3, z4,
+	z4, z3, z2, z1, z1, z2, z3, z4,
+	z4, z3, z2, z2, z2, z2, z3, z4,
+	z4, z3, z3, z3, z3, z3, z3, z4,
+	z4, z4, z4, z4, z4, z4, z4, z4}
+
 func (p *PositionalEvalT) squareEval(pos uint8) float64 {
 	eval := p.squarePwnEval(pos)
 
 	piece := p.board.PieceAt(pos)
 	if piece != dragon.Nothing {
 		eval += p.pieceAttackDefenceEval(pos, piece) * attackDefenseEvalScale
+	}
+
+	if useBoardZone {
+		eval *= zoneFactor[pos]
 	}
 	
 	return eval
@@ -338,8 +638,6 @@ var pawnRankBonus = [8]float64 {
 
 const pawnRankBonusScale = 1.0
 
-func rank(pos uint8) uint8 { return pos >> 3; }
-	
 func pawnRankEval(wPawns uint64, bPawns uint64) EvalCp {
 	eval := 0.0
 
