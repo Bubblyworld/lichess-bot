@@ -391,15 +391,28 @@ func (p *PositionalEvalT) initSquareInflenceForColor(color dragon.ColorT) {
 		posBit := uint64(1) << uint(pos)
 		allPieces = allPieces ^ posBit
 
-		p.initSquareInfluenceForPiece(color, pos)
+		p.initSquareInfluenceForPos(color, pos)
 	}
 	
 }
 	
-func (p *PositionalEvalT) initSquareInfluenceForPiece(color dragon.ColorT, pos uint8) {
+func (p *PositionalEvalT) initSquareInfluenceForPos(color dragon.ColorT, pos uint8) {
 	influenceBits := p.influenceByPiece[pos]
 	piece := p.board.PieceAt(pos)
 
+	p.initSquareInfluenceForPiece(color, piece, influenceBits)
+
+	behindQueenInfluenceBits := p.influenceBehindQueenByPiece[pos]
+	if behindQueenInfluenceBits != 0 {
+		behindQueenPiece := BishopBehindQueen
+		if piece == dragon.Rook {
+			behindQueenPiece = RookBehindQueen
+		}
+		p.initSquareInfluenceForPiece(color, behindQueenPiece, behindQueenInfluenceBits)
+	}
+}
+
+func (p *PositionalEvalT) initSquareInfluenceForPiece(color dragon.ColorT, piece dragon.Piece, influenceBits uint64) {
 	for influenceBits != 0 {
 		pos := uint8(bits.TrailingZeros64(influenceBits))
 		// (Could also use posBit-1 trick to clear the bit)
@@ -594,9 +607,21 @@ func (p *PositionalEvalT) squarePwnEval(pos uint8) float64 {
 		reduction *= pieceTypeReduction
 	}
 
-	//
-	// TODO connnected weak pieces
-	//
+	// Bishops connected through queens
+	bishopBehindQueenDiff := inflW[BishopBehindQueen] - inflB[BishopBehindQueen]
+
+	if bishopBehindQueenDiff != 0 {
+		eval += squarePwnedBonus(bishopBehindQueenDiff, uint8(BishopBehindQueen), reduction)
+		reduction *= pieceTypeReduction
+	}
+
+	// Rooks connected through queens
+	rookBehindQueenDiff := inflW[RookBehindQueen] - inflB[RookBehindQueen]
+
+	if rookBehindQueenDiff != 0 {
+		eval += squarePwnedBonus(rookBehindQueenDiff, uint8(RookBehindQueen), reduction)
+		reduction *= pieceTypeReduction
+	}
 
 	// Kings
 	kingDiff := inflW[dragon.King] - inflB[dragon.King]
