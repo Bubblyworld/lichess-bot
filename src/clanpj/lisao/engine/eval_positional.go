@@ -338,7 +338,7 @@ func (p *PositionalEvalT) processMinorConnectors(queenPos uint8, allMinorPieces 
 			posBit := uint64(1) << uint(pos)
 			linePieces = linePieces ^ posBit
 
-			behindQueenInfluence := lineInfluence & ^p.influenceByPiece[pos]
+			behindQueenInfluence := lineInfluence & ^(p.influenceByPiece[pos] | posBit)
 			p.influenceBehindQueenByPiece[pos] |= behindQueenInfluence
 
 			// fmt.Printf("         Q at %d minor at %d line influence = %016x minor influence = %016x behindQueenInfluence = %016x\n", queenPos, pos, lineInfluence, p.influenceByPiece[pos], behindQueenInfluence)

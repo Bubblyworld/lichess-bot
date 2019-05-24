@@ -58,6 +58,8 @@ func doFen(fen string, descr string) {
 var connectedWBishopsNW = [2]string { "8/6B1/8/8/3B4/8/8/8 w KQkq - 0 1", "Bishops G7 D4"}
 var disconnectedWBishopsNW = [2]string { "8/6B1/8/4N3/3B4/8/8/8 w KQkq - 0 1", "Bishops G7 D4 Knight E5"}
 var connectedWBishopsAndQNW = [2]string { "8/6B1/8/8/3B4/8/1Q6/8 w KQkq - 0 1", "Bishops G7 D4 Queen B1"}
+var connectedWBishopsNE = [2]string { "8/1B6/8/8/4B3/8/8/8 w KQkq - 0 1", "Bishops G2 D5"}
+var connectedWBishopsAndQNE = [2]string { "8/1B6/8/3Q4/4B3/8/8/8 w KQkq - 0 1", "Bishops G2 E4 Queen D5"}
 
 var ccrFens = [][2]string {
 	{"rn1qkb1r/pp2pppp/5n2/3p1b2/3P4/2N1P3/PP3PPP/R1BQKBNR w KQkq - 0 1", "id 'CCR01'; bm Qb3"},
@@ -89,6 +91,9 @@ var ccrFens = [][2]string {
 func TestInfluence(t *testing.T) {
 	//doFen(connectedWBishopsNW[0], connectedWBishopsNW[1])
 	//doFen(disconnectedWBishopsNW[0], disconnectedWBishopsNW[1])
-	doFen(connectedWBishopsAndQNW[0], connectedWBishopsAndQNW[1])
+	//doFen(connectedWBishopsAndQNW[0], connectedWBishopsAndQNW[1])
+	//doFen(connectedWBishopsNE[0], connectedWBishopsNE[1])
+	doFen(connectedWBishopsAndQNE[0], connectedWBishopsAndQNE[1])
+	
 	//doFen(ccrFens[0][0], ccrFens[0][1])
 }
