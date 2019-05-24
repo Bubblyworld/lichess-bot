@@ -3,7 +3,7 @@
 package engine
 
 import (
-	// "fmt"
+	"fmt"
 	"math"
 	"math/bits"
 
@@ -158,11 +158,13 @@ func (p *PositionalEvalT) initColor(color dragon.ColorT) {
 	p.initBishops(color)
 	p.initRooks(color)
 	p.initQueens(color)
+
 	// Queen influence through Bishops and Rooks
 	//   and Bishop/Rook influence through (behind) Queens
 	p.initConnectedQueensAndMinorSliders(color)
+
 	// Queen and Bishop influence through (i.e. from behind) pawn capture
-	//p.initConnectedPawnCaptures(color)
+	p.initConnectedPawnCaptures(color)
 	
 	p.initPieceType(color, dragon.King, dragon.KingMovesBitboard)
 }
@@ -378,6 +380,64 @@ func (p *PositionalEvalT) initConnectedQueensAndMinorSliders(color dragon.ColorT
 		// Connected bishops on the NE diagonal
 		neDiag := neDiagBitsForPos(pos)
 		p.processMinorConnectors(pos, allBishops, neDiag, influence)
+	}
+}
+
+// Queen and Bishop influence through (i.e. from behind) pawn capture
+// TODO - should also do influenceBehindQueen for Bishops but I'm not bothered right now
+func (p *PositionalEvalT) initConnectedPawnCaptures(color dragon.ColorT) {
+	allQueensAndBishops := p.board.Bbs[color][dragon.Queen] | p.board.Bbs[color][dragon.Bishop]
+	allPawns := p.board.Bbs[color][dragon.Pawn]
+
+	queensAndBishops := allQueensAndBishops
+
+	for queensAndBishops != 0 {
+		pos := uint8(bits.TrailingZeros64(queensAndBishops))
+		// (Could also use posBit-1 trick to clear the bit)
+		posBit := uint64(1) << uint(pos)
+		queensAndBishops = queensAndBishops ^ posBit
+
+		fmt.Printf("Got a Q or B at pos %d\n", pos)
+
+		// Bishops and Queens can only influence from behind a pawn
+		forwardBits := posBit - 1
+		if color == dragon.White {
+			forwardBits = ^forwardBits & ^posBit
+		}
+		forwardPawns := allPawns & forwardBits
+		
+		// Queen or Bishop's influence
+		influence := p.influenceByPiece[pos]
+
+		// Connected pawns on the NW direction - there can be only one(?)
+		nwDiag := nwDiagBitsForPos(pos)
+		nwConnectedPawnBit := forwardPawns & nwDiag & influence
+		if nwConnectedPawnBit != 0 {
+			pawnAttackBit := uint64(0)
+			if color == dragon.White {
+				pawnAttackBit = (nwConnectedPawnBit & ^ fileBits[0]) << 7
+			} else {
+				pawnAttackBit = (nwConnectedPawnBit & ^ fileBits[7]) >> 7
+			}
+
+			// Add the pawn attack location to the influence
+			p.influenceByPiece[pos] |= pawnAttackBit
+		}
+
+		// Connected pawns on the NE direction - there can be only one(?)
+		neDiag := neDiagBitsForPos(pos)
+		neConnectedPawnBit := forwardPawns & neDiag & influence
+		if neConnectedPawnBit != 0 {
+			pawnAttackBit := uint64(0)
+			if color == dragon.White {
+				pawnAttackBit = (neConnectedPawnBit & ^ fileBits[7]) << 9
+			} else {
+				pawnAttackBit = (neConnectedPawnBit & ^ fileBits[0]) >> 9
+			}
+
+			// Add the pawn attack location to the influence
+			p.influenceByPiece[pos] |= pawnAttackBit
+		}
 	}
 }
 

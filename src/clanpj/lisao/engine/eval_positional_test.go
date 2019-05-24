@@ -67,6 +67,15 @@ var connectedWRooksAndQRank = [2]string { "8/1RQ2R2/8/8/8/8/8/8 w KQkq - 0 1", "
 
 var connectedWQueensNW = [2]string { "8/6Q1/8/8/3Q4/8/8/8 w KQkq - 0 1", "Queens G7 D4"}
 
+var connectedWBishopAndPawnNW = [2]string { "8/6P1/8/8/3B4/8/8/8 w KQkq - 0 1", "Bishop D4 Pawn G7"}
+var connectedWBishopAndPawnNE = [2]string { "8/8/8/2P5/3B4/8/8/8 w KQkq - 0 1", "Bishop D4 Pawn C5"}
+
+var notconnectedBBishopAndPawnNE = [2]string { "8/8/8/2p5/3b4/8/8/8 w KQkq - 0 1", "Black Bishop D4 Pawn C5"}
+var connectedBBishopAndPawnNW = [2]string { "8/8/8/8/3b4/2p5/8/8 w KQkq - 0 1", "Black Bishop D4 Pawn C3"}
+
+var connectedWBishopAndPawnNWEdge = [2]string { "8/8/7P/8/8/8/3B4/8 w KQkq - 0 1", "Bishop D2 Pawn H6"}
+var connectedBBishopAndPawnNWEdge = [2]string { "8/8/8/8/1b6/p7/8/8 w KQkq - 0 1", "Black Bishop B4 Pawn A3"}
+
 var ccrFens = [][2]string {
 	{"rn1qkb1r/pp2pppp/5n2/3p1b2/3P4/2N1P3/PP3PPP/R1BQKBNR w KQkq - 0 1", "id 'CCR01'; bm Qb3"},
 	{"rn1qkb1r/pp2pppp/5n2/3p1b2/3P4/1QN1P3/PP3PPP/R1B1KBNR b KQkq - 1 1", "id 'CCR02';bm Bc8"},
@@ -105,7 +114,14 @@ func TestInfluence(t *testing.T) {
 	//doFen(connectedWRooksFile[0], connectedWRooksFile[1])
 	//doFen(connectedWRooksAndQRank[0], connectedWRooksAndQRank[1])
 
-	doFen(connectedWQueensNW[0], connectedWQueensNW[1])
+	//doFen(connectedWQueensNW[0], connectedWQueensNW[1])
+
+	//doFen(connectedWBishopAndPawnNW[0], connectedWBishopAndPawnNW[1])
+	//doFen(connectedWBishopAndPawnNE[0], connectedWBishopAndPawnNE[1])
+	//doFen(notconnectedBBishopAndPawnNE[0], notconnectedBBishopAndPawnNE[1])
+	//doFen(connectedBBishopAndPawnNW[0], connectedBBishopAndPawnNW[1])
+	//doFen(connectedWBishopAndPawnNWEdge[0], connectedWBishopAndPawnNWEdge[1])
+	doFen(connectedBBishopAndPawnNWEdge[0], connectedBBishopAndPawnNWEdge[1])
 	
 	//doFen(ccrFens[0][0], ccrFens[0][1])
 }
