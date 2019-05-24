@@ -148,6 +148,10 @@ func InitPositionalEval(board *dragon.Board, posEval *PositionalEvalT) {
 	posEval.initSquareInflence()
 }
 
+func (p *PositionalEvalT) InfluenceOfPos(pos uint8) uint64 { return p.influenceByPiece[pos] }
+func (p *PositionalEvalT) InfluenceBehindQueenOfPos(pos uint8) uint64 { return p.influenceBehindQueenByPiece[pos] }
+func (p *PositionalEvalT) SquareInfluencedBy(pos uint8) [dragon.NColors][dragon.NPieces+2]int  { return p.squareInfluence[pos] }
+
 func (p *PositionalEvalT) initColor(color dragon.ColorT) {
 	p.initPawns(color)
 	p.initPieceType(color, dragon.Knight, dragon.KnightMovesBitboard)
