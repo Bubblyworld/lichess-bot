@@ -317,25 +317,31 @@ func (p *PositionalEvalT) initQueens(color dragon.ColorT) {
 	}
 }
 
-func (p *PositionalEvalT) processMinorConnectors(pos uint8, allMinorPieces uint64, line uint64, influence uint64) {
+func (p *PositionalEvalT) processMinorConnectors(queenPos uint8, allMinorPieces uint64, line uint64, influence uint64) {
 	lineConnectors := allMinorPieces & line & influence
+	// fmt.Printf("     Q at %d minors = %016x line = %016x influence = %016x minor-connectors = %016x\n", queenPos, allMinorPieces, line, influence, lineConnectors)
 
 	if lineConnectors != 0 {
 		// Merge all line influence bits
 		lineInfluence := p.accumulateConnectorInfluence(lineConnectors, line, influence)
 
 		// Add the accumulated influence to this queen
-		p.influenceByPiece[pos] |= lineInfluence
+		p.influenceByPiece[queenPos] |= lineInfluence
 
-		// The minor connectors get additional influence as 'behind queen' influence
-		linePieces := lineConnectors
+		// The minor connectors get additional influence as 'behind queen' influence.
+		//   We need to recompute the set of connected minor pieces because the Queen's
+		//   influence has grown through connected minors.
+		linePieces := allMinorPieces & line & lineInfluence
 		for linePieces != 0 {
 			pos := uint8(bits.TrailingZeros64(linePieces))
 			// (Could also use posBit-1 trick to clear the bit)
 			posBit := uint64(1) << uint(pos)
 			linePieces = linePieces ^ posBit
-			
-			p.influenceBehindQueenByPiece[pos] |= lineInfluence & ^p.influenceByPiece[pos]
+
+			behindQueenInfluence := lineInfluence & ^p.influenceByPiece[pos]
+			p.influenceBehindQueenByPiece[pos] |= behindQueenInfluence
+
+			// fmt.Printf("         Q at %d minor at %d line influence = %016x minor influence = %016x behindQueenInfluence = %016x\n", queenPos, pos, lineInfluence, p.influenceByPiece[pos], behindQueenInfluence)
 		}
 	}
 }
@@ -370,11 +376,11 @@ func (p *PositionalEvalT) initConnectedQueensAndMinorSliders(color dragon.ColorT
 
 		// Connected bishops on the NW diagonal
 		nwDiag := nwDiagBitsForPos(pos)
-		p.processConnectors(pos, allBishops, nwDiag, influence)
+		p.processMinorConnectors(pos, allBishops, nwDiag, influence)
 
 		// Connected queens on the NE diagonal
 		neDiag := neDiagBitsForPos(pos)
-		p.processConnectors(pos, allBishops, neDiag, influence)
+		p.processMinorConnectors(pos, allBishops, neDiag, influence)
 	}
 }
 
