@@ -41,7 +41,7 @@ func doFen(fen string, descr string) {
 		influenceBehindQueen := posEval.InfluenceBehindQueenOfPos(pos)
 
 		if piece != dragon.Nothing || influence != 0 || influenceBehindQueen != 0 {
-			fmt.Printf("%s %s influence:", dragon.IndexToAlgebraic(dragon.Square(pos)), pieces[color][piece])
+			fmt.Printf("%d %s %s influence %016x:", pos, dragon.IndexToAlgebraic(dragon.Square(pos)), pieces[color][piece], influence)
 			printfPosBits(influence)
 
 			if influenceBehindQueen != 0 {
@@ -64,6 +64,8 @@ var connectedWBishopsAndQNE = [2]string { "8/1B6/8/3Q4/4B3/8/8/8 w KQkq - 0 1", 
 var connectedWRooksRank = [2]string { "8/1R3R2/8/8/8/8/8/8 w KQkq - 0 1", "Rooks B7 F7"}
 var connectedWRooksFile = [2]string { "8/5R2/8/8/8/5R2/8/8 w KQkq - 0 1", "Rooks F7 F3"}
 var connectedWRooksAndQRank = [2]string { "8/1RQ2R2/8/8/8/8/8/8 w KQkq - 0 1", "Rooks B7 F7 Queen B6"}
+
+var connectedWQueensNW = [2]string { "8/6Q1/8/8/3Q4/8/8/8 w KQkq - 0 1", "Queens G7 D4"}
 
 var ccrFens = [][2]string {
 	{"rn1qkb1r/pp2pppp/5n2/3p1b2/3P4/2N1P3/PP3PPP/R1BQKBNR w KQkq - 0 1", "id 'CCR01'; bm Qb3"},
@@ -101,7 +103,9 @@ func TestInfluence(t *testing.T) {
 	
 	//doFen(connectedWRooksRank[0], connectedWRooksRank[1])
 	//doFen(connectedWRooksFile[0], connectedWRooksFile[1])
-	doFen(connectedWRooksAndQRank[0], connectedWRooksAndQRank[1])
+	//doFen(connectedWRooksAndQRank[0], connectedWRooksAndQRank[1])
 
+	doFen(connectedWQueensNW[0], connectedWQueensNW[1])
+	
 	//doFen(ccrFens[0][0], ccrFens[0][1])
 }

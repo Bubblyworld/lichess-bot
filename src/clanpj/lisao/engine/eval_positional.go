@@ -157,13 +157,13 @@ func (p *PositionalEvalT) initColor(color dragon.ColorT) {
 	p.initPieceType(color, dragon.Knight, dragon.KnightMovesBitboard)
 	p.initBishops(color)
 	p.initRooks(color)
-	p.initPieceType(color, dragon.Queen, func (pos uint8) uint64 {
-		return dragon.CalculateBishopMoveBitboard(pos, p.allPieces) |
-			dragon.CalculateRookMoveBitboard(pos, p.allPieces)
-	})
+	p.initQueens(color)
 	// Queen influence through Bishops and Rooks
 	//   and Bishop/Rook influence through (behind) Queens
 	p.initConnectedQueensAndMinorSliders(color)
+	// Queen and Bishop influence through (i.e. from behind) pawn capture
+	//p.initConnectedPawnCaptures(color)
+	
 	p.initPieceType(color, dragon.King, dragon.KingMovesBitboard)
 }
 
@@ -218,7 +218,7 @@ func (p *PositionalEvalT) processConnectors(pos uint8, lowerPieces uint64, line 
 			// (Could also use posBit-1 trick to clear the bit)
 			posBit := uint64(1) << uint(pos)
 			linePieces = linePieces ^ posBit
-			
+
 			p.influenceByPiece[pos] |= lineInfluence
 		}
 	}
@@ -319,7 +319,6 @@ func (p *PositionalEvalT) initQueens(color dragon.ColorT) {
 
 func (p *PositionalEvalT) processMinorConnectors(queenPos uint8, allMinorPieces uint64, line uint64, influence uint64) {
 	lineConnectors := allMinorPieces & line & influence
-	// fmt.Printf("     Q at %d minors = %016x line = %016x influence = %016x minor-connectors = %016x\n", queenPos, allMinorPieces, line, influence, lineConnectors)
 
 	if lineConnectors != 0 {
 		// Merge all line influence bits
@@ -340,8 +339,6 @@ func (p *PositionalEvalT) processMinorConnectors(queenPos uint8, allMinorPieces 
 
 			behindQueenInfluence := lineInfluence & ^(p.influenceByPiece[pos] | posBit)
 			p.influenceBehindQueenByPiece[pos] |= behindQueenInfluence
-
-			// fmt.Printf("         Q at %d minor at %d line influence = %016x minor influence = %016x behindQueenInfluence = %016x\n", queenPos, pos, lineInfluence, p.influenceByPiece[pos], behindQueenInfluence)
 		}
 	}
 }
@@ -361,8 +358,8 @@ func (p *PositionalEvalT) initConnectedQueensAndMinorSliders(color dragon.ColorT
 		posBit := uint64(1) << uint(pos)
 		queens = queens ^ posBit
 
-		influence := dragon.CalculateQueenMoveBitboard(pos, p.allPieces)
-		p.influenceByPiece[pos] = influence
+		// Queen's influence
+		influence := p.influenceByPiece[pos]
 
 		// Look for connected minor sliders
 
@@ -378,7 +375,7 @@ func (p *PositionalEvalT) initConnectedQueensAndMinorSliders(color dragon.ColorT
 		nwDiag := nwDiagBitsForPos(pos)
 		p.processMinorConnectors(pos, allBishops, nwDiag, influence)
 
-		// Connected queens on the NE diagonal
+		// Connected bishops on the NE diagonal
 		neDiag := neDiagBitsForPos(pos)
 		p.processMinorConnectors(pos, allBishops, neDiag, influence)
 	}
