@@ -541,12 +541,14 @@ func squarePwnedBonus(diff int, pieceCategory uint8, reduction float64) float64 
 	return baseBonus*diffBonus
 }
 
+const useAttackDefence = false
+
 const attackDefenseEvalScale = 0.0
 
 const useBoardZone = true
 
-const z1 = 1.2
-const z2 = 1.125
+const z1 = 1.125
+const z2 = 1.0625
 const z3 = 1.0
 const z4 = 0.9375
 
@@ -565,7 +567,7 @@ func (p *PositionalEvalT) squareEval(pos uint8) float64 {
 	eval := p.squarePwnEval(pos)
 
 	piece := p.board.PieceAt(pos)
-	if piece != dragon.Nothing {
+	if useAttackDefence && piece != dragon.Nothing {
 		eval += p.pieceAttackDefenceEval(pos, piece) * attackDefenseEvalScale
 	}
 
