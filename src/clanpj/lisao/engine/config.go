@@ -22,13 +22,13 @@ var UseMoveOrdering = true
 var UseIDMoveHint = true
 var UseIDMoveHintAlways = true
 var MinIDMoveHintDepth = 2
-var UseTT = false // true - switching off for now - still looks buggy at times
+var UseTT = true // true - switching off for now - still looks buggy at times
 var UseDeepTT = false //true // worse than not using?
-var HeurUseTTDeeperHits = false // true iff we embrace deeper TT results as valid (heuristic!)
+var HeurUseTTDeeperHits = true // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
 var QSearchDepth = 12
-var UseQSearchTT = false //true
-var HeurUseQTTDeeperHits = false //true // true iff we embrace deeper QTT results as valid (heuristic!)
+var UseQSearchTT = true
+var HeurUseQTTDeeperHits = true //true // true iff we embrace deeper QTT results as valid (heuristic!)
 var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true

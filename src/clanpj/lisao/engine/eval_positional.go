@@ -3,7 +3,7 @@
 package engine
 
 import (
-	"fmt"
+	// "fmt"
 	"math"
 	"math/bits"
 
@@ -396,8 +396,6 @@ func (p *PositionalEvalT) initConnectedPawnCaptures(color dragon.ColorT) {
 		// (Could also use posBit-1 trick to clear the bit)
 		posBit := uint64(1) << uint(pos)
 		queensAndBishops = queensAndBishops ^ posBit
-
-		fmt.Printf("Got a Q or B at pos %d\n", pos)
 
 		// Bishops and Queens can only influence from behind a pawn
 		forwardBits := posBit - 1
