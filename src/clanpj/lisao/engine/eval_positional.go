@@ -106,8 +106,9 @@ const (
 )
 
 // Connected pieces behind a Queen
-const BishopBehindQueen = dragon.NPieces
-const RookBehindQueen = dragon.NPieces+1
+const BishopBehindQueen = dragon.All + 1
+const RookBehindQueen = BishopBehindQueen + 1
+const NPiecesIncludingBehndQueen = RookBehindQueen + 1
 
 // Synopsis of the board position, including individual piece's influence, attack/defence bitmaps and much more.
 // We ignore side to move.
@@ -132,7 +133,7 @@ type PositionalEvalT struct {
 
 	// What kind of piece pwns each square
 	// 2 extra entries for connected-bishops-behind-queen and connected-rooks-behind-queen respectively
-	squareInfluence [64][dragon.NColors][dragon.NPieces+2]int
+	squareInfluence [64][dragon.NColors][NPiecesIncludingBehndQueen]int
 }
 
 // Initialise the positional evaluation for the given board.
@@ -150,7 +151,7 @@ func InitPositionalEval(board *dragon.Board, posEval *PositionalEvalT) {
 
 func (p *PositionalEvalT) InfluenceOfPos(pos uint8) uint64 { return p.influenceByPiece[pos] }
 func (p *PositionalEvalT) InfluenceBehindQueenOfPos(pos uint8) uint64 { return p.influenceBehindQueenByPiece[pos] }
-func (p *PositionalEvalT) SquareInfluencedBy(pos uint8) [dragon.NColors][dragon.NPieces+2]int  { return p.squareInfluence[pos] }
+func (p *PositionalEvalT) SquareInfluencedBy(pos uint8) [dragon.NColors][NPiecesIncludingBehndQueen]int  { return p.squareInfluence[pos] }
 
 func (p *PositionalEvalT) initColor(color dragon.ColorT) {
 	p.initPawns(color)
@@ -485,11 +486,12 @@ func (p *PositionalEvalT) initSquareInfluenceForPiece(color dragon.ColorT, piece
 		influenceBits = influenceBits ^ posBit
 
 		p.squareInfluence[pos][color][piece]++
+		p.squareInfluence[pos][color][dragon.All]++
 	}
 }
 
 // Bonus for a side dominating a square - just a simple first metric
-var squarePwnedByBonus = [9/*dragon.NPieces+2*/]float64 {
+var squarePwnedByBonus = [NPiecesIncludingBehndQueen]float64 {
 	0.00, // Nothing
 	1.00, // Pawn
 	0.80, // Knight
@@ -539,9 +541,9 @@ func squarePwnedBonus(diff int, pieceCategory uint8, reduction float64) float64 
 	return baseBonus*diffBonus
 }
 
-const useAttackDefence = false
+const useAttackDefence = true
 
-const attackDefenseEvalScale = 0.0
+const attackDefenseEvalScale = 1.0
 
 const useBoardZone = true
 
@@ -580,7 +582,7 @@ const protectedPieceEval = 0.5
 const hangingPieceEval = -0.1
 const lostPieceEval = -0.5
 
-func isLostPieceTrivial(piece dragon.Piece, inflThem *[dragon.NPieces+2]int) bool {
+func isLostPieceTrivial(piece dragon.Piece, inflThem *[NPiecesIncludingBehndQueen]int) bool {
 	for pieceType := dragon.Pawn; pieceType < piece; pieceType++ {
 		if inflThem[pieceType] > 0 {
 			return true
@@ -589,7 +591,7 @@ func isLostPieceTrivial(piece dragon.Piece, inflThem *[dragon.NPieces+2]int) boo
 	return false
 }
 
-func isHangingPieceTrivial(piece dragon.Piece, inflUs *[dragon.NPieces+2]int, inflThem *[dragon.NPieces+2]int) bool {
+func isHangingPieceTrivial(piece dragon.Piece, inflUs *[NPiecesIncludingBehndQueen]int, inflThem *[NPiecesIncludingBehndQueen]int) bool {
 	for pieceType := dragon.Pawn; pieceType < dragon.NPieces; pieceType++ {
 		if inflUs[pieceType] > 0 || inflThem[pieceType] > 0 {
 			return false
@@ -602,9 +604,9 @@ func isHangingPieceTrivial(piece dragon.Piece, inflUs *[dragon.NPieces+2]int, in
 func (p *PositionalEvalT) pieceAttackDefenceEval(pos uint8, piece dragon.Piece) float64 {
 	isWhite := p.board.Bbs[dragon.White][dragon.All] & (uint64(1) << pos) != 0 //p.board.isWhitePieceAt(pos)
 
-	var infl *[dragon.NColors][dragon.NPieces+2]int = &p.squareInfluence[pos]
-	var inflW *[dragon.NPieces+2]int = &infl[dragon.White]
-	var inflB *[dragon.NPieces+2]int = &infl[dragon.Black]
+	var infl *[dragon.NColors][NPiecesIncludingBehndQueen]int = &p.squareInfluence[pos]
+	var inflW *[NPiecesIncludingBehndQueen]int = &infl[dragon.White]
+	var inflB *[NPiecesIncludingBehndQueen]int = &infl[dragon.Black]
 
 	var inflUs = inflW
 	var inflThem = inflB
@@ -614,30 +616,38 @@ func (p *PositionalEvalT) pieceAttackDefenceEval(pos uint8, piece dragon.Piece) 
 	}
 
 	// Is this piece protected?
-	if isLostPieceTrivial(piece, inflThem) {
+	if inflUs[dragon.All] > 0 && inflThem[dragon.All] == 0 {
 		if isWhite {
-			return lostPieceEval
+			return protectedPieceEval
 		} else {
-			return -lostPieceEval
+			return -protectedPieceEval
 		}
 	}
+	
+	// if isLostPieceTrivial(piece, inflThem) {
+	// 	if isWhite {
+	// 		return lostPieceEval
+	// 	} else {
+	// 		return -lostPieceEval
+	// 	}
+	// }
 
-	if isHangingPieceTrivial(piece, inflUs, inflThem) {
-		if isWhite {
-			return hangingPieceEval
-		} else {
-			return -hangingPieceEval
-		}
-	}
+	// if isHangingPieceTrivial(piece, inflUs, inflThem) {
+	// 	if isWhite {
+	// 		return hangingPieceEval
+	// 	} else {
+	// 		return -hangingPieceEval
+	// 	}
+	// }
 	
 	return 0.0
 }
 
 // Which side controls this square and to what extent?
 func (p *PositionalEvalT) squarePwnEval(pos uint8) float64 {
-	var infl *[dragon.NColors][dragon.NPieces+2]int = &p.squareInfluence[pos]
-	var inflW *[dragon.NPieces+2]int = &infl[dragon.White]
-	var inflB *[dragon.NPieces+2]int = &infl[dragon.Black]
+	var infl *[dragon.NColors][NPiecesIncludingBehndQueen]int = &p.squareInfluence[pos]
+	var inflW *[NPiecesIncludingBehndQueen]int = &infl[dragon.White]
+	var inflB *[NPiecesIncludingBehndQueen]int = &infl[dragon.Black]
 
 	eval := 0.0
 	reduction := 1.0
