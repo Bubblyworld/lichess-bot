@@ -307,10 +307,16 @@ func StaticPiecePosEvalOrder0(board *dragon.Board) EvalCp {
 	return piecesEval + piecesPosEval
 }
 
-const EVAL0_ONLY = false
+
+const usePiecePosEvalOrderN = true
+const usePositionEvalOrderN = false
 
 // Expensive part - O(n) even with delta eval - of static eval from white's perspective.
 func StaticPiecePosEvalOrderN(board *dragon.Board) EvalCp {
+
+	if !usePiecePosEvalOrderN {
+		return EvalCp(0)
+	}
 
 	endGameRatio := endGameRatioByPiecesCount(board)
 
@@ -321,11 +327,9 @@ func StaticPiecePosEvalOrderN(board *dragon.Board) EvalCp {
 
 	orderNEval := pawnExtrasEval + kingProtectionEval + bishopPairEval + endgameEval
 
-	if EVAL0_ONLY {
-		orderNEval = EvalCp(0)
+	if usePositionEvalOrderN {
+		orderNEval += StaticPositionEvalOrderN(board)
 	}
-
-	orderNEval += StaticPositionEvalOrderN(board)
 
 	// Clamp it to the absolute bounds
 	if orderNEval > MaxAbsStaticEvalOrderN {
@@ -407,14 +411,14 @@ func endGameRatioByPiecesCountBeforeAndAfterCapture(board *dragon.Board) (float6
 // Sum of piece position values
 //   endGameRatio is a number between 0.0 and 1.0 where 1.0 means we're in end-game
 func piecesPosVal(bitboards *dragon.Bitboards, piecePosVals *[7]*[64]int8, kingEndgamePosVals *[64]int8, endGameRatio float64) EvalCp {
-	eval := pieceTypePiecesPosVal(bitboards[dragon.Pawn], piecePosVals[dragon.Pawn])
-	eval += pieceTypePiecesPosVal(bitboards[dragon.Bishop], piecePosVals[dragon.Bishop])
-	eval += pieceTypePiecesPosVal(bitboards[dragon.Knight], piecePosVals[dragon.Knight])
-	eval += pieceTypePiecesPosVal(bitboards[dragon.Rook], piecePosVals[dragon.Rook])
-	eval += pieceTypePiecesPosVal(bitboards[dragon.Queen], piecePosVals[dragon.Queen])
+	eval := PieceTypePiecesPosVal(bitboards[dragon.Pawn], piecePosVals[dragon.Pawn])
+	eval += PieceTypePiecesPosVal(bitboards[dragon.Bishop], piecePosVals[dragon.Bishop])
+	eval += PieceTypePiecesPosVal(bitboards[dragon.Knight], piecePosVals[dragon.Knight])
+	eval += PieceTypePiecesPosVal(bitboards[dragon.Rook], piecePosVals[dragon.Rook])
+	eval += PieceTypePiecesPosVal(bitboards[dragon.Queen], piecePosVals[dragon.Queen])
 
-	kingStartEval := pieceTypePiecesPosVal(bitboards[dragon.King], piecePosVals[dragon.King])
-	kingEndgameEval := pieceTypePiecesPosVal(bitboards[dragon.King], kingEndgamePosVals)
+	kingStartEval := PieceTypePiecesPosVal(bitboards[dragon.King], piecePosVals[dragon.King])
+	kingEndgameEval := PieceTypePiecesPosVal(bitboards[dragon.King], kingEndgamePosVals)
 
 	kingEval := (1.0-endGameRatio)*float64(kingStartEval) + endGameRatio*float64(kingEndgameEval)
 
@@ -422,7 +426,7 @@ func piecesPosVal(bitboards *dragon.Bitboards, piecePosVals *[7]*[64]int8, kingE
 }
 
 // Sum of piece position values for a particular type of piece
-func pieceTypePiecesPosVal(bitmask uint64, piecePosVals *[64]int8) EvalCp {
+func PieceTypePiecesPosVal(bitmask uint64, piecePosVals *[64]int8) EvalCp {
 	var eval EvalCp = 0
 
 	for bitmask != 0 {
@@ -437,42 +441,6 @@ func pieceTypePiecesPosVal(bitmask uint64, piecePosVals *[64]int8) EvalCp {
 	return eval
 }
 
-// Passed pawn bonuses
-// TODO rationalise these with pawn pos vals
-var pp2 int8 = 7
-var pp3 int8 = 13
-var pp4 int8 = 20
-var pp5 int8 = 28
-var pp6 int8 = 37
-
-func init() {
-	RegisterConfigParamInt8Default("passed-pawn-rank-2", &pp2)
-	RegisterConfigParamInt8Default("passed-pawn-rank-3", &pp3)
-	RegisterConfigParamInt8Default("passed-pawn-rank-4", &pp4)
-	RegisterConfigParamInt8Default("passed-pawn-rank-5", &pp5)
-	RegisterConfigParamInt8Default("passed-pawn-rank-6", &pp6)
-}
-
-var whitePassedPawnPosVals = [64]int8{
-	0, 0, 0, 0, 0, 0, 0, 0,
-	pp2, pp2, pp2, pp2, pp2, pp2, pp2, pp2,
-	pp3, pp3, pp3, pp3, pp3, pp3, pp3, pp3,
-	pp4, pp4, pp4, pp4, pp4, pp4, pp4, pp4,
-	pp5, pp5, pp5, pp5, pp5, pp5, pp5, pp5,
-	pp6, pp6, pp6, pp6, pp6, pp6, pp6, pp6,
-	0, 0, 0, 0, 0, 0, 0, 0, // a 7th rank pawn is always passed, so covered by the pawn-pos-val
-	0, 0, 0, 0, 0, 0, 0, 0}
-
-var blackPassedPawnPosVals = [64]int8{
-	0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, // a 7th rank pawn is always passed, so covered by the pawn-pos-val
-	pp6, pp6, pp6, pp6, pp6, pp6, pp6, pp6,
-	pp5, pp5, pp5, pp5, pp5, pp5, pp5, pp5,
-	pp4, pp4, pp4, pp4, pp4, pp4, pp4, pp4,
-	pp3, pp3, pp3, pp3, pp3, pp3, pp3, pp3,
-	pp2, pp2, pp2, pp2, pp2, pp2, pp2, pp2,
-	0, 0, 0, 0, 0, 0, 0, 0}
-
 // Bonus for pawns protecting pawns
 // Disabled since it actually seems worse for root position search
 var pProtPawnVal int8 = 0
@@ -480,13 +448,9 @@ var pProtPawnVal int8 = 0
 // Bonus for pawns protecting pieces
 var pProtPieceVal int8 = 10
 
-// Penalty per doubled pawn
-var doubledPawnPenalty int8 = -5
-
 func init() {
 	RegisterConfigParamInt8Default("pawn-prot-pawn", &pProtPawnVal)
 	RegisterConfigParamInt8Default("pawn-prot-piece", &pProtPieceVal)
-	RegisterConfigParamInt8Default("doubled-pawn", &doubledPawnPenalty)
 }
 
 // Pawn extras
@@ -495,14 +459,7 @@ func pawnExtrasVal(board *dragon.Board) EvalCp {
 	bPawns := board.Bbs[dragon.Black][dragon.Pawn]
 
 	// Passed pawns
-	wPawnScope := WPawnScope(wPawns)
-	bPawnScope := BPawnScope(bPawns)
-
-	wPassedPawns := wPawns & ^bPawnScope
-	bPassedPawns := bPawns & ^wPawnScope
-
-	wPPVal := pieceTypePiecesPosVal(wPassedPawns, &whitePassedPawnPosVals)
-	bPPVal := pieceTypePiecesPosVal(bPassedPawns, &blackPassedPawnPosVals)
+	ppVal := PassedPawnsEval(wPawns, bPawns)
 
 	// Pawns protected by pawns
 	wPawnAtt := WPawnAttacks(wPawns)
@@ -523,18 +480,12 @@ func pawnExtrasVal(board *dragon.Board) EvalCp {
 	bPProtPiecesVal := bits.OnesCount64(bPiecesProtectedByPawns) * int(pProtPieceVal)
 
 	// Doubled pawns
-	wPawnTelestop := NFill(N(wPawns))
-	wDoubledPawns := wPawnTelestop & wPawns
-	wDoubledPawnVal := bits.OnesCount64(wDoubledPawns) * int(doubledPawnPenalty)
+	dpVal := DoubledPawnsEval(wPawns, bPawns)
 
-	bPawnTelestop := SFill(S(bPawns))
-	bDoubledPawns := bPawnTelestop & bPawns
-	bDoubledPawnVal := bits.OnesCount64(bDoubledPawns) * int(doubledPawnPenalty)
-
-	return (wPPVal - bPPVal) +
+	return Float64ToCpEval(ppVal + dpVal) +
 		EvalCp(wPProtPawnsVal-bPProtPawnsVal) +
-		EvalCp(wPProtPiecesVal-bPProtPiecesVal) +
-		EvalCp(wDoubledPawnVal-bDoubledPawnVal)
+		EvalCp(wPProtPiecesVal-bPProtPiecesVal)
+		
 }
 
 type KingProtectionT uint8

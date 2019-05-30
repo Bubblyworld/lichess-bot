@@ -28,6 +28,11 @@ const InvalidEval EvalCp = math.MinInt16
 
 const DrawEval EvalCp = 0
 
+// Round a floating point eval in pawns to 16-bit centipawn value
+func Float64ToCpEval(val float64) EvalCp {
+	return EvalCp(math.Round(val*100.0))
+}
+
 // Different evals
 // Configuration options
 type EvalAlgorithmT int

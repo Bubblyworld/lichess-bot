@@ -17,7 +17,7 @@ var DumpSearchStats = false
 var SearchDepth = 7          // Ignored now that time control is implemented
 var SearchCutoffPercent = 30 // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
 var HeurUseNullMove = true
-var HeurUseLMR = false // true weaker than not using?
+var HeurUseLMR = true //false // true weaker than not using?
 var UseMoveOrdering = true
 var UseIDMoveHint = true
 var UseIDMoveHintAlways = true
@@ -35,7 +35,7 @@ var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning ==
 var UseQKillerMoves = true
 var UseQDeepKillerMoves = true
 var UseBalancedEval = false
-var EvalAlgorithm = PositionalEval //PiecePosEval
+var EvalAlgorithm = PositionalEval // PiecePosEval
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {

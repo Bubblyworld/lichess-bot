@@ -4,7 +4,6 @@ package engine
 
 import (
 	// "fmt"
-	"math"
 	"math/bits"
 
 	dragon "github.com/Bubblyworld/dragontoothmg"
@@ -118,18 +117,21 @@ type PositionalEvalT struct {
 
 	// Just a cache to simply the code - basically bitmap of occupied squares of both colors.
 	allPieces uint64
+
+	// Cache of king pos for both sides
+	kingPos [dragon.NColors]uint8
 	
 	// The 'influence' of each piece, indexed by the piece's position.
 	// Includes defence of pieces of the same color, so do '& ^MyAll' to get actual possible moves.
 	// Also disregards pinning, moving into check etc.
 	// NB: Does NOT include pawns (because we calculate pawn influence en-masse by color).
-	influenceByPiece [64]uint64;
+	influenceByPiece [64]uint64
 
 	// The 'influence' of each piece, through a connected queen (only valid for Bishops and Rooks)
-	influenceBehindQueenByPiece [64]uint64;
+	influenceBehindQueenByPiece [64]uint64
 	
 	// Squares attacked by pawns of each color, east and west respectively.
-	pawnAttacks [dragon.NColors][NAttackDirs]uint64;
+	pawnAttacks [dragon.NColors][NAttackDirs]uint64
 
 	// What kind of piece pwns each square
 	// 2 extra entries for connected-bishops-behind-queen and connected-rooks-behind-queen respectively
@@ -141,6 +143,9 @@ func InitPositionalEval(board *dragon.Board, posEval *PositionalEvalT) {
 	posEval.board = board
 
 	posEval.allPieces = board.Bbs[dragon.White][dragon.All] | board.Bbs[dragon.Black][dragon.All]
+
+	posEval.kingPos[dragon.White] = uint8(bits.TrailingZeros64(board.Bbs[dragon.White][dragon.King]))
+	posEval.kingPos[dragon.Black] = uint8(bits.TrailingZeros64(board.Bbs[dragon.Black][dragon.King]))
 
 	posEval.initColor(dragon.White)
 	posEval.initColor(dragon.Black)
@@ -541,9 +546,11 @@ func squarePwnedBonus(diff int, pieceCategory uint8, reduction float64) float64 
 	return baseBonus*diffBonus
 }
 
-const useAttackDefence = true
+const useAttackDefence = false //true
 
 const attackDefenseEvalScale = 1.0
+
+// Give more weight to the centre of the board
 
 const useBoardZone = true
 
@@ -552,7 +559,6 @@ const z2 = 1.0625
 const z3 = 1.0
 const z4 = 0.9375
 
-// Focus on the center of the board
 var zoneFactor = [64]float64 {
 	z4, z4, z4, z4, z4, z4, z4, z4,
 	z4, z3, z3, z3, z3, z3, z3, z4,
@@ -562,6 +568,67 @@ var zoneFactor = [64]float64 {
 	z4, z3, z2, z2, z2, z2, z3, z4,
 	z4, z3, z3, z3, z3, z3, z3, z4,
 	z4, z4, z4, z4, z4, z4, z4, z4}
+
+// Give more weight to the squares around the King
+
+const useKingZone = false //true
+
+var kingProx1 = [64]uint64{
+	0x0000000000000302, 0x0000000000000705, 0x0000000000000e0a, 0x0000000000001c14,
+	0x0000000000003828, 0x0000000000007050, 0x000000000000e0a0, 0x000000000000c040,
+	0x0000000000030203, 0x0000000000070507, 0x00000000000e0a0e, 0x00000000001c141c,
+	0x0000000000382838, 0x0000000000705070, 0x0000000000e0a0e0, 0x0000000000c040c0,
+	0x0000000003020300, 0x0000000007050700, 0x000000000e0a0e00, 0x000000001c141c00,
+	0x0000000038283800, 0x0000000070507000, 0x00000000e0a0e000, 0x00000000c040c000,
+	0x0000000302030000, 0x0000000705070000, 0x0000000e0a0e0000, 0x0000001c141c0000,
+	0x0000003828380000, 0x0000007050700000, 0x000000e0a0e00000, 0x000000c040c00000,
+	0x0000030203000000, 0x0000070507000000, 0x00000e0a0e000000, 0x00001c141c000000,
+	0x0000382838000000, 0x0000705070000000, 0x0000e0a0e0000000, 0x0000c040c0000000,
+	0x0003020300000000, 0x0007050700000000, 0x000e0a0e00000000, 0x001c141c00000000,
+	0x0038283800000000, 0x0070507000000000, 0x00e0a0e000000000, 0x00c040c000000000,
+	0x0302030000000000, 0x0705070000000000, 0x0e0a0e0000000000, 0x1c141c0000000000,
+	0x3828380000000000, 0x7050700000000000, 0xe0a0e00000000000, 0xc040c00000000000,
+	0x0203000000000000, 0x0507000000000000, 0x0a0e000000000000, 0x141c000000000000,
+	0x2838000000000000, 0x5070000000000000, 0xa0e0000000000000, 0x40c0000000000000}
+
+var kingProx2 = [64]uint64{
+        0x0000000000070404, 0x00000000000f0808, 0x00000000001f1111, 0x00000000003e2222,
+        0x00000000007c4444, 0x0000000000f88888, 0x0000000000f01010, 0x0000000000e02020,
+        0x0000000007040404, 0x000000000f080808, 0x000000001f111111, 0x000000003e222222,
+        0x000000007c444444, 0x00000000f8888888, 0x00000000f0101010, 0x00000000e0202020,
+        0x0000000704040407, 0x0000000f0808080f, 0x0000001f1111111f, 0x0000003e2222223e,
+        0x0000007c4444447c, 0x000000f8888888f8, 0x000000f0101010f0, 0x000000e0202020e0,
+        0x0000070404040700, 0x00000f0808080f00, 0x00001f1111111f00, 0x00003e2222223e00,
+        0x00007c4444447c00, 0x0000f8888888f800, 0x0000f0101010f000, 0x0000e0202020e000,
+        0x0007040404070000, 0x000f0808080f0000, 0x001f1111111f0000, 0x003e2222223e0000,
+        0x007c4444447c0000, 0x00f8888888f80000, 0x00f0101010f00000, 0x00e0202020e00000,
+        0x0704040407000000, 0x0f0808080f000000, 0x1f1111111f000000, 0x3e2222223e000000,
+        0x7c4444447c000000, 0xf8888888f8000000, 0xf0101010f0000000, 0xe0202020e0000000,
+        0x0404040700000000, 0x0808080f00000000, 0x1111111f00000000, 0x2222223e00000000,
+        0x4444447c00000000, 0x888888f800000000, 0x101010f000000000, 0x202020e000000000,
+        0x0404070000000000, 0x08080f0000000000, 0x11111f0000000000, 0x22223e0000000000,
+        0x44447c0000000000, 0x8888f80000000000, 0x1010f00000000000, 0x2020e00000000000}
+
+func proximityFactor(piecePosBit uint64, kingPos uint8) float64 {
+	factor := 1.0
+
+	zone1 := kingProx1[kingPos]
+	if piecePosBit & zone1 != 0 {
+		factor *= z1
+	} else {
+		zone2 := kingProx2[kingPos]
+		if piecePosBit & zone2 != 0 {
+			factor *= z2
+		}
+	}
+	return factor
+}
+
+func (p *PositionalEvalT) kingProximityFactor(pos uint8) float64 {
+	piecePosBit := uint64(1) << pos
+	
+	return proximityFactor(piecePosBit, p.kingPos[dragon.White]) * proximityFactor(piecePosBit, p.kingPos[dragon.Black])
+}
 
 func (p *PositionalEvalT) squareEval(pos uint8) float64 {
 	eval := p.squarePwnEval(pos)
@@ -573,6 +640,10 @@ func (p *PositionalEvalT) squareEval(pos uint8) float64 {
 
 	if useBoardZone {
 		eval *= zoneFactor[pos]
+	}
+
+	if useKingZone {
+		eval *= p.kingProximityFactor(pos)
 	}
 	
 	return eval
@@ -724,7 +795,7 @@ func (p *PositionalEvalT) Eval() EvalCp {
 	eval *= posEvalScale
 
 	// Round to centipawns
-	return EvalCp(math.Round(eval*100.0))
+	return Float64ToCpEval(eval)
 }
 
 // Pawn rank bonuses (from white's perspective)
@@ -762,7 +833,7 @@ func pawnRankEval(wPawns uint64, bPawns uint64) EvalCp {
 	}
 	
 	// Round to centipawns
-	return EvalCp(math.Round(eval*pawnRankBonusScale*100.0))
+	return Float64ToCpEval(eval*pawnRankBonusScale)
 }
 
 
@@ -781,6 +852,7 @@ func StaticPositionalEvalOrder0(board *dragon.Board) EvalCp {
 
 const includePiecesEval = true
 const includePawnRankEval = true
+const includePawnStructureEval = true
 
 // Expensive part - O(n)+ - of static eval from white's perspective.
 func StaticPositionalEvalOrderN(board *dragon.Board) EvalCp {
@@ -797,10 +869,15 @@ func StaticPositionalEvalOrderN(board *dragon.Board) EvalCp {
 	if includePawnRankEval {
 		pawnRankVal = pawnRankEval(board.Bbs[dragon.White][dragon.Pawn], board.Bbs[dragon.Black][dragon.Pawn])
 	}
+
+	pawnStructureVal := EvalCp(0)
+	if includePawnStructureEval {
+		pawnStructureVal = Float64ToCpEval(PawnStructureEval(board))
+	}
 	
 	var positionalEval PositionalEvalT
 	InitPositionalEval(board, &positionalEval)
 
-	return piecesVal + pawnRankVal + positionalEval.Eval()
+	return piecesVal + pawnRankVal + pawnStructureVal + positionalEval.Eval()
 }
 
