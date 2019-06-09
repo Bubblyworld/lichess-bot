@@ -9,8 +9,8 @@ import (
 	dragon "github.com/Bubblyworld/dragontoothmg"
 )
 
-func rank(pos uint8) uint8 { return pos >> 3; }
-func file(pos uint8) uint8 { return pos & 7; }
+func Rank(pos uint8) uint8 { return pos >> 3; }
+func File(pos uint8) uint8 { return pos & 7; }
 
 var rankBits = [8]uint64 {
 	0x00000000000000ff,
@@ -33,12 +33,12 @@ var fileBits = [8]uint64 {
 	0x8080808080808080}
 
 func rankBitsForPos(pos uint8) uint64 {
-	r := rank(pos)
+	r := Rank(pos)
 	return rankBits[r]
 }
 
 func fileBitsForPos(pos uint8) uint64 {
-	f := file(pos)
+	f := File(pos)
 	return fileBits[f]
 }
 
@@ -46,15 +46,15 @@ var nwDiagBits [16]uint64
 var neDiagBits [16]uint64
 
 func nwIndexForPos(pos uint8) uint8 {
-	r := rank(pos)
-	f := file(pos)
+	r := Rank(pos)
+	f := File(pos)
 
 	return r + f
 }
 
 func neIndexForPos(pos uint8) uint8 {
-	r := rank(pos)
-	f := file(pos)
+	r := Rank(pos)
+	f := File(pos)
 
 	return 8 + r - f
 }
@@ -798,46 +798,6 @@ func (p *PositionalEvalT) Eval() EvalCp {
 	return Float64ToCpEval(eval)
 }
 
-// Pawn rank bonuses (from white's perspective)
-var pawnRankBonus = [8]float64 {
-	0.0,
-	-0.15,
-	-0.07,
-	0.04,
-	0.11,
-	0.29,
-	0.85,
-	0.0}
-
-const pawnRankBonusScale = 1.0
-
-func pawnRankEval(wPawns uint64, bPawns uint64) EvalCp {
-	eval := 0.0
-
-	for wPawns != 0 {
-		pos := uint8(bits.TrailingZeros64(wPawns))
-		// (Could also use posBit-1 trick to clear the bit)
-		posBit := uint64(1) << uint(pos)
-		wPawns = wPawns ^ posBit
-
-		eval += pawnRankBonus[rank(pos)]
-	}
-	
-	for bPawns != 0 {
-		pos := uint8(bits.TrailingZeros64(bPawns))
-		// (Could also use posBit-1 trick to clear the bit)
-		posBit := uint64(1) << uint(pos)
-		bPawns = bPawns ^ posBit
-
-		eval -= pawnRankBonus[7-rank(pos)]
-	}
-	
-	// Round to centipawns
-	return Float64ToCpEval(eval*pawnRankBonusScale)
-}
-
-
-	
 // Cheap part of static eval by opportunistic delta eval.
 // We don't do anything here (for now).
 func NegaStaticPositionalEvalOrder0Fast(board *dragon.Board, prevEval0 EvalCp, moveInfo *dragon.BoardSaveT) EvalCp {
@@ -851,7 +811,6 @@ func StaticPositionalEvalOrder0(board *dragon.Board) EvalCp {
 }
 
 const includePiecesEval = true
-const includePawnRankEval = true
 const includePawnStructureEval = true
 
 // Expensive part - O(n)+ - of static eval from white's perspective.
@@ -865,11 +824,6 @@ func StaticPositionalEvalOrderN(board *dragon.Board) EvalCp {
 		piecesVal = whitePiecesVal - blackPiecesVal
 	}
 
-	pawnRankVal := EvalCp(0)
-	if includePawnRankEval {
-		pawnRankVal = pawnRankEval(board.Bbs[dragon.White][dragon.Pawn], board.Bbs[dragon.Black][dragon.Pawn])
-	}
-
 	pawnStructureVal := EvalCp(0)
 	if includePawnStructureEval {
 		pawnStructureVal = Float64ToCpEval(PawnStructureEval(board))
@@ -878,6 +832,6 @@ func StaticPositionalEvalOrderN(board *dragon.Board) EvalCp {
 	var positionalEval PositionalEvalT
 	InitPositionalEval(board, &positionalEval)
 
-	return piecesVal + pawnRankVal + pawnStructureVal + positionalEval.Eval()
+	return piecesVal + pawnStructureVal + positionalEval.Eval()
 }
 

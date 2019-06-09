@@ -65,7 +65,7 @@ func (s *SearchT) probeQTT(qDepthToGo int, alpha EvalCp, beta EvalCp) (dragon.Mo
 
 // Quiescence search - differs from full search as follows:
 //   - we only look at captures, promotions and check evasion - we could/should also possibly look at checks, but check detection is currently expensive
-//   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval (TODO)
+//   - we consider 'standing pat' - i.e. do alpha/beta cutoff according to the node's static eval
 // Return best-move, best-eval, isQuiesced
 // TODO - better static eval if we bottom out without quiescing, e.g. static exchange evaluation (SEE)
 // TODO - include moving away from attacks too?

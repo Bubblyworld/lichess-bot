@@ -61,7 +61,7 @@ func PerC(n uint64, N uint64) string {
 	return fmt.Sprintf("%d [%.2f%%]", n, float64(n)/float64(N)*100)
 }
 
-func (s *SearchStatsT) Dump(finalDepth int) {
+func (s *SearchStatsT) DumpOld(finalDepth int) {
 	// Reverse order from which it appears in the UCI driver
 	fmt.Println("info string   "/*q-moves:", s.QMoves, "q-simple-moves:", PerC(s.QSimpleMoves, s.QMoves), "q-simple-captures:", PerC(s.QSimpleCaptures, s.QMoves), "q-nomoves:", s.QNoMoves, "q-1moves:", s.Q1Move, "q-movegens:", PerC(s.QMoveGens, s.QNonLeafs)*/, "q-mates:", PerC(s.QMates, s.QNonLeafs), "q-pat-cuts:", PerC(s.QPatCuts, s.QNonLeafs), "q-rampage-prunes:", PerC(s.QRampagePrunes, s.QNonLeafs)/*, "q-killers:", PerC(s.QKillers, s.QNonLeafs), "q-killer-cuts:", PerC(s.QKillerCuts, s.QNonLeafs), "q-deep-killers:", PerC(s.QDeepKillers, s.QNonLeafs), "q-deep-killer-cuts:", PerC(s.QDeepKillerCuts, s.QNonLeafs)*/)
 	// if UseEarlyMoveHint {
@@ -92,4 +92,22 @@ func (s *SearchStatsT) Dump(finalDepth int) {
 	}
 	fmt.Println()
 	fmt.Println("info string nodes:", s.Nodes, "non-leafs:", s.NonLeafs, "all-nodes:", PerC(s.AllChildrenNodes, s.NonLeafs), "1st-child-cuts:", PerC(s.FirstChildCuts, s.NonLeafs), "pos-repetitions:", PerC(s.PosRepetitions, s.Nodes))
+}
+
+func (s *SearchStatsT) Dump/*CutStats*/(finalDepth int) {
+	fmt.Println()
+
+	// First we hit the TT
+	nodesLeft := s.Nodes
+	fmt.Println("info string nodes:", nodesLeft, "tt-beta-cuts:", PerC(s.TTBetaCuts, nodesLeft), "tt-alpha-cuts:", PerC(s.TTAlphaCuts, nodesLeft), "tt-true-evals:", PerC(s.TTTrueEvals, nodesLeft))
+
+	nodesLeft -= (s.TTBetaCuts + s.TTAlphaCuts + s.TTTrueEvals)
+
+	// Then we do null-move heuristic
+	fmt.Println("info string nodes-after-tt:", PerC(nodesLeft, s.Nodes), "null-cuts:", PerC(s.NullMoveCuts, nodesLeft))
+
+	nodesLeft -= s.NullMoveCuts
+
+	fmt.Println("info string nodes-after-null:", PerC(nodesLeft, s.Nodes))
+	fmt.Println()
 }
