@@ -250,11 +250,14 @@ func isTimedOut(timeout *uint32) bool {
 	return atomic.LoadUint32(timeout) != 0
 }
 
+// Shallow search best move is prefered to all others
+const shallowBestValue uint8 = 255
+
 // TT move is prefered to all others
-const ttMoveValue uint8 = 255
+const ttMoveValue uint8 = 254
 
 // ...then the killer moves
-const killer0Value uint8 = 254
+const killer0Value uint8 = 253
 
 // Indexed by promo piece type - only N, B, R, Q valid
 var promoMOValue = [8]uint8{0, 0 /*N*/, 105 /*B*/, 103 /*R*/, 104 /*Q*/, 109, 0, 0}
@@ -294,11 +297,14 @@ func (mo *byMoValueDesc) Less(i, j int) bool {
 	return mo.values[i] > mo.values[j]
 }
 
-func mvvLvaEvalMoves(board *dragon.Board, moves []dragon.Move, values []uint8, ttMove dragon.Move, killers []dragon.Move, killersStats []uint64) {
+func mvvLvaEvalMoves(board *dragon.Board, moves []dragon.Move, values []uint8, shallowBest dragon.Move, ttMove dragon.Move, killers []dragon.Move, killersStats []uint64) {
 next_move:
 	for i, move := range moves {
 		// Special heuristic hint moves...
-		if move == ttMove {
+		if move == shallowBest {
+			values[i] = shallowBestValue
+			continue next_move
+		} else if move == ttMove {
 			values[i] = ttMoveValue
 			continue next_move
 		}
@@ -328,10 +334,10 @@ next_move:
 // 1. Promotions by promo type
 // 2. MMV-LVA for captures
 //     (most valuable victim first, then least-valuable attacker second)
-func orderMoves(board *dragon.Board, moves []dragon.Move, ttMove dragon.Move, killers []dragon.Move, killersStats []uint64) {
+func orderMoves(board *dragon.Board, moves []dragon.Move, shallowBest dragon.Move, ttMove dragon.Move, killers []dragon.Move, killersStats []uint64) {
 	// Value of each move - nothing to do with any other eval, just a local ordering metric
 	values := make([]uint8, len(moves))
-	mvvLvaEvalMoves(board, moves, values, ttMove, killers, killersStats)
+	mvvLvaEvalMoves(board, moves, values, shallowBest, ttMove, killers, killersStats)
 	mo := byMoValueDesc{moves, values}
 	sort.Sort(&mo)
 }

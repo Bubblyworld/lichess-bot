@@ -17,7 +17,7 @@ import (
 	"clanpj/lisao/engine"
 )
 
-var VersionString = "0.1a Kung Pow PS v69 " + runtime.GOOS + "-" + runtime.GOARCH
+var VersionString = "0.1a Kung Pow PS v70 " + runtime.GOOS + "-" + runtime.GOARCH
 
 func main() {
 	uciLoop()

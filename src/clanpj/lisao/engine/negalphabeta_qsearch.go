@@ -149,7 +149,7 @@ func (s *SearchT) QSearchNegAlphaBeta(qDepthToGo int, depthFromRoot int, depthFr
 
 		// Sort the moves heuristically
 		if UseQSearchMoveOrdering && len(legalMoves) > 1 {
-			orderMoves(s.board, legalMoves, qttMove, s.qkt.killersForDepth(depthFromRoot)[:], s.stats.QKillers[depthFromRoot][:])
+			orderMoves(s.board, legalMoves, NoMove, qttMove, s.qkt.killersForDepth(depthFromRoot)[:], s.stats.QKillers[depthFromRoot][:])
 			if UseQSearchRampagePruning {
 				nMovesToUse = pruneQueenRampages(s.board, legalMoves, depthFromQRoot, s.stats)
 			}

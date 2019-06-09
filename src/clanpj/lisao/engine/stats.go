@@ -6,6 +6,9 @@ import (
 
 type SearchStatsT struct {
 	Nodes             uint64 // #nodes visited
+	AfterTTNodes      uint64 // #nodes surviving TT cut/exact
+	AfterNullNodes    uint64 // #nodes surviving null-heuristic cut
+	AfterChildLoopNodes uint64 // #nodes surviving 
 	Mates             uint64 // #true terminal nodes
 	NonLeafs          uint64 // #non-leaf nodes
 	CutNodes          uint64 // #(beta-)cut nodes
@@ -19,6 +22,7 @@ type SearchStatsT struct {
 	DeepNullMoveCuts  uint64 // #deep nodes that cut due to null move heuristic
 	DeepCutNodeChildren uint64 // Total #children of cut nodes at least MinIDMoveHintDepth from leaf
 	AllChildrenNodes  uint64 // #non-leaf nodes with no beta cut
+	AllChildrenNodes2 uint64 // #non-leaf nodes with no beta cut (check)
 	TTMoveCuts        uint64 // #nodes with tt move cut
 	PosRepetitions    uint64 // #nodes with repeated position
 	TTHits            uint64 // #nodes with successful TT probe
@@ -46,6 +50,18 @@ type SearchStatsT struct {
 	QttAlphaCuts      uint64 // #qnodes with beta cutoff from QTT hit
 	QttLateCuts       uint64 // #qnodes with beta cutoff from QTT hit
 	QttTrueEvals      uint64 // #qnodes with QQT hits that are the same depth and are not a lower bound
+
+	NShallowBestMoveCalcs uint64 // #actual calculations of shallow best move
+	NNoMoveShallowBestMove uint64 // #calculations of shallow best move that return NoMove
+	NShallowBestMoves uint64 // #nodes with shallow-best-moves
+	NShallowBestMovesBest uint64 // #nodes with best move == shallow-best-move
+	NShallowBestMoveCuts uint64 // #nodes with shallow-best-move best and a cut
+	NShallowBestMoveOtherCuts uint64 // #nodes with shallow-best-move and another move cuts
+
+	NTTMoves uint64 // #nodes with tt-moves
+	NTTMovesBest uint64 // #nodes with best move == tt-move
+	NTTMoveCuts uint64 // #nodes with tt-move best and a cut
+	NTTMoveOtherCuts uint64 // #nodes with tt-moveother move cuts
 
 	NonLeafsAt       [MaxDepth]uint64  // non-leafs by depth
 	QNonLeafsAt      [MaxDepth]uint64 // q-search non-leafs by depth
@@ -101,13 +117,45 @@ func (s *SearchStatsT) Dump/*CutStats*/(finalDepth int) {
 	nodesLeft := s.Nodes
 	fmt.Println("info string nodes:", nodesLeft, "tt-beta-cuts:", PerC(s.TTBetaCuts, nodesLeft), "tt-alpha-cuts:", PerC(s.TTAlphaCuts, nodesLeft), "tt-true-evals:", PerC(s.TTTrueEvals, nodesLeft))
 
-	nodesLeft -= (s.TTBetaCuts + s.TTAlphaCuts + s.TTTrueEvals)
+	sanityCheck := nodesLeft - (s.TTBetaCuts + s.TTAlphaCuts + s.TTTrueEvals)
+	nodesLeft = s.AfterTTNodes
+
+	fmt.Println("info string nodes-after-tt-per-all-nodes:", PerC(nodesLeft, s.Nodes))
+
+	// Then we do leaf nodes (q-search)
+	fmt.Println("info string non-leafs-per-all-nodes:", PerC(s.NonLeafs, s.Nodes), "non-leafs-per-after-tt:", PerC(s.NonLeafs, nodesLeft), "cut-nodes:", PerC(s.CutNodes, s.NonLeafs), "all-nodes:", PerC(s.AllChildrenNodes, s.NonLeafs), "sanity-check:", s.AllChildrenNodes2)
+
+	nodesLeft = s.NonLeafs
 
 	// Then we do null-move heuristic
-	fmt.Println("info string nodes-after-tt:", PerC(nodesLeft, s.Nodes), "null-cuts:", PerC(s.NullMoveCuts, nodesLeft))
+	//fmt.Println("info string nullodes-after-tt:", PerC(nodesLeft, s.Nodes), "sanity-check:", sanityCheck, "null-cuts:", PerC(s.NullMoveCuts, nodesLeft))
 
-	nodesLeft -= s.NullMoveCuts
+	sanityCheck = nodesLeft - s.NullMoveCuts
+	nodesLeft = s.AfterNullNodes
 
-	fmt.Println("info string nodes-after-null:", PerC(nodesLeft, s.Nodes))
+	fmt.Println("info string nodes-after-null-per-all-nodes:", PerC(nodesLeft, s.Nodes), "nodes-after-null-per-non-leafs:", PerC(nodesLeft, s.NonLeafs), "sanity-check:", sanityCheck)
+
+	fmt.Println("info string all-children:", PerC(s.AllChildrenNodes, nodesLeft), "sanity-check:", s.AllChildrenNodes2, "cut-nodes:", PerC(s.CutNodes, nodesLeft))
+	
+	fmt.Println()
+
+	cutsWithShallowBestMove := s.NShallowBestMoveCuts + s.NShallowBestMoveOtherCuts
+	allNodesWithShallowBestMove := s.NShallowBestMoves - cutsWithShallowBestMove
+	allNodesWithShallowBestMoveBest := s.NShallowBestMovesBest - s.NShallowBestMoveCuts
+		
+	fmt.Println()
+
+	fmt.Println("info string shallow-best-move-calls:", s.AfterNullNodes, "shallow-best-move-calcs:", PerC(s.NShallowBestMoveCalcs, s.AfterNullNodes), "nomove-shallow-best-move-calcs:", PerC(s.NNoMoveShallowBestMove, s.NShallowBestMoveCalcs))
+
+	fmt.Println("info string shallow-best-moves:", PerC(s.NShallowBestMoves, nodesLeft), "shallow-best-move-best:", PerC(s.NShallowBestMovesBest, s.NShallowBestMoves), "cuts-with-shallow-best-move:", cutsWithShallowBestMove, "shallow-best-move-cuts:", PerC(s.NShallowBestMoveCuts, cutsWithShallowBestMove), "all-nodes-with-shallow-best-move", allNodesWithShallowBestMove, "all-nodes-with-shallow-best-move-best-of-all:", PerC(allNodesWithShallowBestMoveBest, allNodesWithShallowBestMove))
+	
+	fmt.Println()
+	
+	cutsWithTTMove := s.NTTMoveCuts + s.NTTMoveOtherCuts
+	allNodesWithTTMove := s.NTTMoves - cutsWithTTMove
+	allNodesWithTTMoveBest := s.NTTMovesBest - s.NTTMoveCuts
+		
+	fmt.Println("info string tt-moves:", PerC(s.NTTMoves, nodesLeft), "tt-move-best:", PerC(s.NTTMovesBest, s.NTTMoves), "cuts-with-tt-move:", cutsWithTTMove, "tt-move-cuts:", PerC(s.NTTMoveCuts, cutsWithTTMove), "all-nodes-with-tt-move", allNodesWithTTMove, "all-nodes-with-tt-move-best-of-all:", PerC(allNodesWithTTMoveBest, allNodesWithTTMove))
+	
 	fmt.Println()
 }

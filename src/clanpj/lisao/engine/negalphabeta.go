@@ -38,9 +38,11 @@ func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp
 
 // Do a shallow search to get a best move
 func (s *SearchT) getShallowBestMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, eval0 EvalCp, ttMove dragon.Move) dragon.Move {
-	shallowBestMove := ttMove
+	shallowBestMove := NoMove //ttMove
 
 	if UseIDMoveHint && (UseIDMoveHintAlways || ttMove == NoMove) && depthToGo >= MinIDMoveHintDepth { // Empirically doing depth 1 probe at skip 1 is worse; ditto depth 2 at skip 2
+		s.stats.NShallowBestMoveCalcs++
+		
 		// Get the best move for a search of depth-2. TODO
 		// We go 2 plies shallower since our eval is unstable between odd/even plies.
 		// The result is effectively the (possibly new) ttMove.
@@ -59,6 +61,10 @@ func (s *SearchT) getShallowBestMove(depthToGo int, depthFromRoot int, alpha Eva
 			}
 		}
 		shallowBestMove, _ = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, idAlpha, idBeta, eval0, dummyPvLine)
+
+		if shallowBestMove == NoMove {
+			s.stats.NNoMoveShallowBestMove++
+		}
 	}
 
 	return shallowBestMove
@@ -242,7 +248,7 @@ done:
 
 		// Sort the moves heuristically
 		if UseMoveOrdering && len(legalMoves) > 1 {
-			orderMoves(s.board, legalMoves, ttMove, s.kt.killersForDepth(depthFromRoot)[:], s.stats.Killers[depthFromRoot][:])
+			orderMoves(s.board, legalMoves, NoMove, ttMove, s.kt.killersForDepth(depthFromRoot)[:], s.stats.Killers[depthFromRoot][:])
 		}
 
 		for _, move := range legalMoves {
@@ -396,11 +402,6 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 
 	s.stats.Nodes++
 	
-	s.stats.NonLeafs++
-	if depthFromRoot < MaxDepthStats {
-		s.stats.NonLeafsAt[depthFromRoot]++
-	}
-
 	// Remember this to check whether our final eval is a lower or upper bound - for TT
 	origBeta := beta
 	origAlpha := alpha
@@ -411,6 +412,8 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 		return ttMove, ttEval
 	}
 
+	s.stats.AfterTTNodes++
+
 	// Maximise eval with beta cut-off
 	bestMove := NoMove
 	bestEval := YourCheckMateEval
@@ -418,6 +421,8 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 
 	// Maintain the PV line - 1 extra element for NoMove cropping with tt hit
 	pvLine := make([]dragon.Move, depthToGo+1)
+
+	shallowBestMove := NoMove
 
 	// Anything after here interacts with the TT - so single return location at the end of the func after writing back to TT
 	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
@@ -429,6 +434,11 @@ done:
 			break done
 		}
 
+		s.stats.NonLeafs++
+		if depthFromRoot < MaxDepthStats {
+			s.stats.NonLeafsAt[depthFromRoot]++
+		}
+		
 		isInCheck := isInCheckFast(s.board)
 
 		// Null-move heuristic.
@@ -440,22 +450,24 @@ done:
 			break done
 		}
 
-		// We don't use the null-move eval to raise alpha because it's only null-window probe around beta in the null-move code, not a full [alpha, beta] window
+		// [This commetn seems bogus/defunct] We don't use the null-move eval to raise alpha because it's only null-window probe around beta in the null-move code, not a full [alpha, beta] window
 		if beta <= nullMoveEval {
 			bestEval, alpha = nullMoveEval, nullMoveEval
 			break done
 		}
 
-		shallowBestMove := s.getShallowBestMove(depthToGo, depthFromRoot, alpha, beta, eval0, ttMove)
+		s.stats.AfterNullNodes++
+
+		shallowBestMove = s.getShallowBestMove(depthToGo, depthFromRoot, alpha, beta, eval0, ttMove)
 
 		// Bail cleanly without polluting search results if we have timed out
 		if isTimedOut(s.timeout) {
 			break done
 		}
 
-		if shallowBestMove != NoMove {
-			ttMove = shallowBestMove // TODO replacing the TT move is a bit odd
-		}
+		// if shallowBestMove != NoMove {
+		// 	ttMove = shallowBestMove // TODO replacing the TT move is a bit odd
+		// }
 		
 		// Generate all legal moves
 		legalMoves, _ := s.board.GenerateLegalMoves2(false /*all moves*/)
@@ -470,7 +482,7 @@ done:
 
 		// Sort the moves heuristically
 		if UseMoveOrdering && len(legalMoves) > 1 {
-			orderMoves(s.board, legalMoves, ttMove, s.kt.killersForDepth(depthFromRoot)[:], s.stats.Killers[depthFromRoot][:])
+			orderMoves(s.board, legalMoves, shallowBestMove, ttMove, s.kt.killersForDepth(depthFromRoot)[:], s.stats.Killers[depthFromRoot][:])
 		}
 
 		for _, move := range legalMoves {
@@ -578,42 +590,76 @@ done:
 
 		s.kt.addKillerMove(bestMove, depthFromRoot)
 
-		// Is it a (beta) cut
-		if origBeta <= bestEval {
-			s.stats.CutNodes++
-			s.stats.CutNodeChildren += uint64(nChildrenVisited)
+		s.stats.AfterChildLoopNodes++
 
-			if nChildrenVisited == 0 {
-				s.stats.NullMoveCuts++
-			} else if nChildrenVisited == 1 {
-				s.stats.FirstChildCuts++
-			}
-
-			if depthToGo < MinIDMoveHintDepth {
-				s.stats.ShallowCutNodes++
-				s.stats.ShallowCutNodeChildren += uint64(nChildrenVisited)
-				if nChildrenVisited == 0 {
-					s.stats.ShallowNullMoveCuts++
-				}
-			} else {
-				s.stats.DeepCutNodes++
-				s.stats.DeepCutNodeChildren += uint64(nChildrenVisited)
-				if nChildrenVisited == 0 {
-					s.stats.DeepNullMoveCuts++
-				}
-			}
-
-			if bestMove != NoMove {
-				if bestMove == ttMove {
-					s.stats.TTMoveCuts++
-				}
-
-				killers := s.kt.killersForDepth(depthFromRoot)
-				for i := 0; i < NKillersPerDepth; i++ {
-					if bestMove == killers[i] {
-						s.stats.KillerCuts[depthFromRoot][i]++
+		// This is irritating - leaf nodes also get here!
+		if 0 < depthToGo {
+			if shallowBestMove != NoMove {
+				s.stats.NShallowBestMoves++
+				if shallowBestMove == bestMove {
+					s.stats.NShallowBestMovesBest++
+					if origBeta <= bestEval {
+						s.stats.NShallowBestMoveCuts++
+					}
+				} else {
+					if origBeta <= bestEval {
+						s.stats.NShallowBestMoveOtherCuts++
 					}
 				}
+			}
+			if ttMove != NoMove {
+				s.stats.NTTMoves++
+				if ttMove == bestMove {
+					s.stats.NTTMovesBest++
+					if origBeta <= bestEval {
+						s.stats.NTTMoveCuts++
+					}
+				} else {
+					if origBeta <= bestEval {
+						s.stats.NTTMoveOtherCuts++
+					}
+				}
+			}
+			
+			// Is it a (beta) cut
+			if origBeta <= bestEval {
+				s.stats.CutNodes++
+				s.stats.CutNodeChildren += uint64(nChildrenVisited)
+				
+				if nChildrenVisited == 0 {
+					s.stats.NullMoveCuts++
+				} else if nChildrenVisited == 1 {
+					s.stats.FirstChildCuts++
+				}
+				
+				if depthToGo < MinIDMoveHintDepth {
+					s.stats.ShallowCutNodes++
+					s.stats.ShallowCutNodeChildren += uint64(nChildrenVisited)
+					if nChildrenVisited == 0 {
+						s.stats.ShallowNullMoveCuts++
+					}
+				} else {
+					s.stats.DeepCutNodes++
+					s.stats.DeepCutNodeChildren += uint64(nChildrenVisited)
+					if nChildrenVisited == 0 {
+						s.stats.DeepNullMoveCuts++
+					}
+				}
+				
+				if bestMove != NoMove {
+					if bestMove == ttMove {
+						s.stats.TTMoveCuts++
+					}
+					
+					killers := s.kt.killersForDepth(depthFromRoot)
+					for i := 0; i < NKillersPerDepth; i++ {
+						if bestMove == killers[i] {
+							s.stats.KillerCuts[depthFromRoot][i]++
+						}
+					}
+				}
+			} else {
+				s.stats.AllChildrenNodes2++
 			}
 		}
 	}

@@ -13,7 +13,7 @@ const (
 )
 
 var SearchAlgorithm = NegAlphaBeta
-var DumpSearchStats = false
+var DumpSearchStats = false//true
 var SearchDepth = 7          // Ignored now that time control is implemented
 var SearchCutoffPercent = 30 // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
 var HeurUseNullMove = true
