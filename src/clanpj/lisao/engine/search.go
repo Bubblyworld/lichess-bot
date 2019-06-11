@@ -152,7 +152,7 @@ func Search2(board *dragon.Board, ht HistoryTableT, kt *KillerMoveTableT, qkt *K
 			eval0 := NegaStaticEvalOrder0(board)
 			// Use the best move from the previous depth as the killer move for this depth
 			var negaEval EvalCp
-			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, alpha, beta, eval0, pvLine)
+			bestMove, negaEval = s.NegAlphaBeta(depthToGo /*depthFromRoot*/, 0, alpha, beta, eval0, pvLine, /*needMove*/true)
 			eval = negaEval
 			if board.Colortomove == dragon.Black {
 				eval = -negaEval

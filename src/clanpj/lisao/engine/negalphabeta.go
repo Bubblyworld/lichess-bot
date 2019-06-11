@@ -40,27 +40,28 @@ func updateEval(bestEval EvalCp, bestMove dragon.Move, alpha EvalCp, eval EvalCp
 func (s *SearchT) getShallowBestMove(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, eval0 EvalCp, ttMove dragon.Move) dragon.Move {
 	shallowBestMove := NoMove //ttMove
 
-	if UseIDMoveHint && (UseIDMoveHintAlways || ttMove == NoMove) && depthToGo >= MinIDMoveHintDepth { // Empirically doing depth 1 probe at skip 1 is worse; ditto depth 2 at skip 2
+	if UseIDMoveHint && (UseIDMoveHintAlways || ttMove == NoMove) && depthToGo >= 2/*MinIDMoveHintDepth*/ { // Empirically doing depth 1 probe at skip 1 is worse; ditto depth 2 at skip 2
 		s.stats.NShallowBestMoveCalcs++
 		
 		// Get the best move for a search of depth-2. TODO
 		// We go 2 plies shallower since our eval is unstable between odd/even plies.
 		// The result is effectively the (possibly new) ttMove.
 		// We weaken the alpha and beta bounds bit to get a more accurate best-move (particularly in null-windows).
-		idGap := EvalCp(5) // best at depth 12 at start pos but it's quite sensitive - TODO (rpj) tune by depthToGo?
+		idGap := EvalCp(20) // TODO (rpj) tune by depthToGo?
+		if depthToGo < 3 { idGap = EvalCp(60) }
 		idAlpha := widenAlpha(alpha, idGap)
 		idBeta := widenBeta(beta, idGap)
 		depthSkip := 1
-		if depthToGo >= 2 {
+		if depthToGo >= 3 {
 			depthSkip = 2
-			if depthToGo >= 3 {
-				depthSkip = 3
-				if depthToGo >= 7 {
+			//if depthToGo >= 3 {
+				//depthSkip = 3
+				if depthToGo >= 20 {
 					depthSkip = 4
 				}
-			}
+			//}
 		}
-		shallowBestMove, _ = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, idAlpha, idBeta, eval0, dummyPvLine)
+		shallowBestMove, _ = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, idAlpha, idBeta, eval0, dummyPvLine, /*needMove*/true)
 
 		if shallowBestMove == NoMove {
 			s.stats.NNoMoveShallowBestMove++
@@ -71,7 +72,7 @@ func (s *SearchT) getShallowBestMove(depthToGo int, depthFromRoot int, alpha Eva
 }
 
 // Return true iff we get a beta cut from null-move heuristic.
-func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, eval0 EvalCp, isInCheck bool) EvalCp {
+func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, eval0 EvalCp, isInCheck bool, needMove bool) EvalCp {
 	// Default to returning alpha (as always)
 	nullMoveEval := YourCheckMateEval
 	nullMoveBestResponse := NoMove
@@ -79,8 +80,8 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	if HeurUseNullMove {
 		// Empirically doing a skip-depth 1 at depth-to-go 1 is worse than not
 		const nullMoveDepthSkip = 2
-		// Try null-move - but never in check otherwise king gets captured
-		if !isInCheck && beta != MyCheckMateEval && depthToGo >= nullMoveDepthSkip {
+		// Try null-move - but never in check otherwise king gets captured and never when we need a (shallow) move hint
+		if !isInCheck && !needMove && beta != MyCheckMateEval && depthToGo >= nullMoveDepthSkip {
 			depthSkip := nullMoveDepthSkip
 			depthSkip++
 			if depthToGo >= 5 {
@@ -91,7 +92,7 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 			}
 			unapply := s.board.ApplyNullMove()
 			// We use a null-window probe here (-beta+1) but then we can't use the null-move eval to raise alpha
-			nullMoveBestResponse, nullMoveEval = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot+1, -beta, -beta+1, -eval0, dummyPvLine)
+			nullMoveBestResponse, nullMoveEval = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot+1, -beta, -beta+1, -eval0, dummyPvLine, /*needMove*/false)
 			nullMoveEval = -nullMoveEval // back to our perspective
 			unapply()
 			
@@ -99,7 +100,7 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 			
 			// If the null-move eval is a beta cut, then sanity check for zugzwang with shallow search to same depth as null-move search
 			if beta <= nullMoveEval {
-				_, shallowEval := s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, -beta, -beta+1, eval0, dummyPvLine)
+				_, shallowEval := s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot, -beta, -beta+1, eval0, dummyPvLine, /*needMove*/true) // TODO needMove == true to avoid shallower null but it's a hack
 				if shallowEval < nullMoveEval {
 					nullMoveEval = shallowEval
 				}
@@ -110,7 +111,7 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	return nullMoveEval
 }
 
-func (s *SearchT) probeTT(depthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move, EvalCp, bool) {
+func (s *SearchT) probeTT(depthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move, int, EvalCp, bool) {
 	if UseTT {
 		// Try the deep TT
 		if UseDeepTT && depthToGo >= s.deepTtMinDepth() {
@@ -129,7 +130,7 @@ func (s *SearchT) probeTT(depthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move
 		}
 	}
 	
-	return NoMove, YourCheckMateEval, false
+	return NoMove, 0, YourCheckMateEval, false
 }
 
 func (s *SearchT) ttHitIsDeep(ttEntry *TTEntryT) bool {
@@ -139,10 +140,15 @@ func (s *SearchT) ttHitIsDeep(ttEntry *TTEntryT) bool {
 		ttEntry.ubDepthToGoPlus1 >= deepTtMinDepthPlus1
 }
 
-func (s *SearchT) processTtHit(ttEntry *TTEntryT, depthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move, EvalCp, bool) {
+func (s *SearchT) processTtHit(ttEntry *TTEntryT, depthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move, int, EvalCp, bool) {
 	s.stats.TTHits++
 	
 	depthToGoPlus1 := uint8(depthToGo+1)
+
+	ttDepthToGo := int(ttEntry.lbDepthToGoPlus1)-1
+	if ttEntry.lbDepthToGoPlus1 < ttEntry.ubDepthToGoPlus1 {
+		ttDepthToGo = int(ttEntry.ubDepthToGoPlus1)-1
+	}
 	
 	//////// First try to find an exact eval at the same depth (or deeper if HeurUseTTDeeperHits is configured)
 	
@@ -155,14 +161,14 @@ func (s *SearchT) processTtHit(ttEntry *TTEntryT, depthToGo int, alpha EvalCp, b
 	// See if we have an exact value
 	if ttLbEntryUseable && ttUbEntryUseable && ttEntry.ubEval <= ttEntry.lbEval {
 		s.stats.TTTrueEvals++
-		return ttEntry.bestMove, ttEntry.ubEval, true
+		return ttEntry.bestMove, ttDepthToGo, ttEntry.ubEval, true
 	}
 	
 	//////// See if we have a beta cut
 	if ttLbEntryUseable {
 		if beta <= ttEntry.lbEval {
 			s.stats.TTBetaCuts++
-			return ttEntry.bestMove, ttEntry.lbEval, true
+			return ttEntry.bestMove, ttDepthToGo, ttEntry.lbEval, true
 		}
 	}
 	
@@ -170,12 +176,12 @@ func (s *SearchT) processTtHit(ttEntry *TTEntryT, depthToGo int, alpha EvalCp, b
 	if ttUbEntryUseable {
 		if ttEntry.ubEval <= alpha {
 			s.stats.TTAlphaCuts++
-			return ttEntry.bestMove, ttEntry.ubEval, true
+			return ttEntry.bestMove, ttDepthToGo, ttEntry.ubEval, true
 		}
 	}
 	
 	//////// We can't use the eval, but use the bestMove anyhow
-	return ttEntry.bestMove, YourCheckMateEval, false
+	return ttEntry.bestMove, ttDepthToGo, YourCheckMateEval, false
 }
 
 func (s *SearchT) updateTt(depthToGo int, origAlpha EvalCp, origBeta EvalCp, bestEval EvalCp, bestMove dragon.Move) {
@@ -383,7 +389,7 @@ func (s *SearchT) NegAlphaBetaDepth0(depthFromRoot int, alpha EvalCp, beta EvalC
 const DEBUG_EVAL0 = false
 
 // Return the best eval attainable through alpha-beta from the given position, along with the move leading to the principal variation.
-func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, eval0 EvalCp, ppvLine []dragon.Move) (dragon.Move, EvalCp) {
+func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, beta EvalCp, eval0 EvalCp, ppvLine []dragon.Move, needMove bool) (dragon.Move, EvalCp) {
 
 	// Sanity check the eval0
 	if DEBUG_EVAL0 {
@@ -407,11 +413,12 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	origAlpha := alpha
 
 	// Probe the Transposition Table
-	ttMove, ttEval, ttIsCut := s.probeTT(depthToGo, alpha, beta)
-	if ttIsCut {
+	ttMove, ttDepthToGo, ttEval, ttIsCut := s.probeTT(depthToGo, alpha, beta)
+	if ttIsCut && (ttMove != NoMove || needMove == false) {
 		return ttMove, ttEval
 	}
 
+	ttDepthToGoIsD1 := depthToGo <= ttDepthToGo+1
 	s.stats.AfterTTNodes++
 
 	// Maximise eval with beta cut-off
@@ -424,7 +431,7 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 
 	shallowBestMove := NoMove
 
-	// Anything after here interacts with the TT - so single return location at the end of the func after writing back to TT
+	// Anything after here updates the TT - so single return location at the end of the func after writing back to TT
 	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
 done:
 	for once := true; once; once = false {
@@ -443,20 +450,24 @@ done:
 
 		// Null-move heuristic.
 		// Note we miss stalemate here, but that should be a vanishingly small case
-		nullMoveEval := s.nullMoveEval(depthToGo, depthFromRoot, alpha, beta, eval0, isInCheck)
+		nullMoveEval := s.nullMoveEval(depthToGo, depthFromRoot, alpha, beta, eval0, isInCheck, needMove)
 
  		// Bail cleanly without polluting search results if we have timed out
 		if isTimedOut(s.timeout) {
 			break done
 		}
 
-		// [This commetn seems bogus/defunct] We don't use the null-move eval to raise alpha because it's only null-window probe around beta in the null-move code, not a full [alpha, beta] window
+		// [This comment seems semi-bogus/defunct]: We don't use the null-move eval to raise alpha because it's only null-window probe around beta in the null-move code, not a full [alpha, beta] window
 		if beta <= nullMoveEval {
 			bestEval, alpha = nullMoveEval, nullMoveEval
 			break done
 		}
 
 		s.stats.AfterNullNodes++
+		s.stats.AfterNullNodesByD[depthToGo]++
+		if ttDepthToGoIsD1 {
+			s.stats.AfterNullNodesByD1[depthToGo]++
+		}
 
 		shallowBestMove = s.getShallowBestMove(depthToGo, depthFromRoot, alpha, beta, eval0, ttMove)
 
@@ -465,10 +476,6 @@ done:
 			break done
 		}
 
-		// if shallowBestMove != NoMove {
-		// 	ttMove = shallowBestMove // TODO replacing the TT move is a bit odd
-		// }
-		
 		// Generate all legal moves
 		legalMoves, _ := s.board.GenerateLegalMoves2(false /*all moves*/)
 
@@ -513,16 +520,16 @@ done:
 						lmrAlphaPad = EvalCp(20)
 					}
 					depthSkip := 2
-					if depthToGo >= 7 {
-						depthSkip = 3
+					//if depthToGo >= 7 {
+						//depthSkip = 3
 						if depthToGo >= 11 {
 							depthSkip = 4
 						}
-					}
+					//}
 					
 					if eval < -alpha {
 						lmrAlpha := widenAlpha(alpha, lmrAlphaPad)
-						_, eval = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childEval0, dummyPvLine)
+						_, eval = s.NegAlphaBeta(depthToGo-depthSkip, depthFromRoot+1, -lmrAlpha-1, -lmrAlpha, childEval0, dummyPvLine, /*needMove*/false)
 						// If LMR probe fails to raise lmrAlpha then avoid full depth probe by fiddling eval appropriately
 						if eval > -lmrAlpha-1 {
 							eval = -alpha
@@ -535,12 +542,12 @@ done:
 				// Null window probe (PV-search) - don't bother if the LMR probe failed
 				if eval < -alpha && alpha < beta-1/*no point if it's already a null window*/ {
 					// Null window probe
-					_, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childEval0, dummyPvLine)
+					_, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -alpha-1, -alpha, childEval0, dummyPvLine, /*needMove*/false)
 				}
 					
 				if eval < -alpha {
 					// Full search
-					_, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childEval0, pvLine)
+					_, eval = s.NegAlphaBeta(depthToGo-1, depthFromRoot+1, -beta, -alpha, childEval0, pvLine, /*needMove*/false)
 				}
 			}
 			eval = -eval // back to our perspective
@@ -592,31 +599,51 @@ done:
 
 		s.stats.AfterChildLoopNodes++
 
-		// This is irritating - leaf nodes also get here!
+		// This is irritating - leaf nodes also get here hence 0 < depthToGo
 		if 0 < depthToGo {
-			if shallowBestMove != NoMove {
-				s.stats.NShallowBestMoves++
-				if shallowBestMove == bestMove {
-					s.stats.NShallowBestMovesBest++
-					if origBeta <= bestEval {
-						s.stats.NShallowBestMoveCuts++
-					}
-				} else {
-					if origBeta <= bestEval {
-						s.stats.NShallowBestMoveOtherCuts++
+			// Exclude null-move cuts from best move origin stats hence bestMove != NoMove
+			if bestMove != NoMove {
+				if shallowBestMove != NoMove {
+					s.stats.NShallowBestMoves++
+					if shallowBestMove == bestMove {
+						s.stats.NShallowBestMovesBest++
+						if origBeta <= bestEval {
+							s.stats.NShallowBestMoveCuts++
+						}
+					} else {
+						if origBeta <= bestEval {
+							s.stats.NShallowBestMoveOtherCuts++
+						}
 					}
 				}
-			}
-			if ttMove != NoMove {
-				s.stats.NTTMoves++
-				if ttMove == bestMove {
-					s.stats.NTTMovesBest++
-					if origBeta <= bestEval {
-						s.stats.NTTMoveCuts++
+				if ttMove != NoMove {
+					s.stats.NTTMoves++
+					s.stats.NTTMovesByD[depthToGo]++
+					if ttMove == bestMove {
+						s.stats.NTTMovesBest++
+						s.stats.NTTMovesBestByD[depthToGo]++
+						if origBeta <= bestEval {
+							s.stats.NTTMoveCuts++
+							s.stats.NTTMoveCutsByD[depthToGo]++
+						}
+					} else {
+						if origBeta <= bestEval {
+							s.stats.NTTMoveOtherCuts++
+							s.stats.NTTMoveOtherCutsByD[depthToGo]++
+						}
 					}
-				} else {
-					if origBeta <= bestEval {
-						s.stats.NTTMoveOtherCuts++
+					if ttDepthToGoIsD1 {
+						s.stats.NTTMovesByD1[depthToGo]++
+						if ttMove == bestMove {
+							s.stats.NTTMovesBestByD1[depthToGo]++
+							if origBeta <= bestEval {
+								s.stats.NTTMoveCutsByD1[depthToGo]++
+							}
+						} else {
+							if origBeta <= bestEval {
+								s.stats.NTTMoveOtherCutsByD1[depthToGo]++
+							}
+						}
 					}
 				}
 			}
@@ -646,7 +673,7 @@ done:
 					}
 				}
 				
-				if bestMove != NoMove {
+				if bestMove != NoMove { // exclude null move cut?
 					if bestMove == ttMove {
 						s.stats.TTMoveCuts++
 					}

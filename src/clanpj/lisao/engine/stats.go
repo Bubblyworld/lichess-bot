@@ -63,6 +63,18 @@ type SearchStatsT struct {
 	NTTMoveCuts uint64 // #nodes with tt-move best and a cut
 	NTTMoveOtherCuts uint64 // #nodes with tt-moveother move cuts
 
+	AfterNullNodesByD [MaxDepth]uint64 // #nodes surviving null-heuristic cut
+	NTTMovesByD [MaxDepth]uint64 // #nodes with tt-moves
+	NTTMovesBestByD [MaxDepth]uint64 // #nodes with best move == tt-move
+	NTTMoveCutsByD [MaxDepth]uint64 // #nodes with tt-move best and a cut
+	NTTMoveOtherCutsByD [MaxDepth]uint64 // #nodes with tt-moveother move cuts
+
+	AfterNullNodesByD1 [MaxDepth]uint64 // #nodes surviving null-heuristic cut
+	NTTMovesByD1 [MaxDepth]uint64 // #nodes with tt-moves from depthToGo-1
+	NTTMovesBestByD1 [MaxDepth]uint64 // #nodes with best move == tt-move from depthToGo-1
+	NTTMoveCutsByD1 [MaxDepth]uint64 // #nodes with tt-move best and a cut from depthToGo-1
+	NTTMoveOtherCutsByD1 [MaxDepth]uint64 // #nodes with tt-moveother move cuts from depthToGo-1
+	
 	NonLeafsAt       [MaxDepth]uint64  // non-leafs by depth
 	QNonLeafsAt      [MaxDepth]uint64 // q-search non-leafs by depth
 
@@ -156,6 +168,30 @@ func (s *SearchStatsT) Dump/*CutStats*/(finalDepth int) {
 	allNodesWithTTMoveBest := s.NTTMovesBest - s.NTTMoveCuts
 		
 	fmt.Println("info string tt-moves:", PerC(s.NTTMoves, nodesLeft), "tt-move-best:", PerC(s.NTTMovesBest, s.NTTMoves), "cuts-with-tt-move:", cutsWithTTMove, "tt-move-cuts:", PerC(s.NTTMoveCuts, cutsWithTTMove), "all-nodes-with-tt-move", allNodesWithTTMove, "all-nodes-with-tt-move-best-of-all:", PerC(allNodesWithTTMoveBest, allNodesWithTTMove))
+
+	fmt.Println()
+	
+	for d := 0; d < 13; d++ {
+		nodesLeftByD := s.AfterNullNodesByD[d]
+		
+		cutsWithTTMove = s.NTTMoveCutsByD[d] + s.NTTMoveOtherCutsByD[d]
+		allNodesWithTTMove = s.NTTMovesByD[d] - cutsWithTTMove
+		allNodesWithTTMoveBest = s.NTTMovesBestByD[d] - s.NTTMoveCutsByD[d]
+		
+		fmt.Println("info string depth", d, "tt-moves:", PerC(s.NTTMovesByD[d], nodesLeftByD), "tt-move-best:", PerC(s.NTTMovesBestByD[d], s.NTTMovesByD[d]), "cuts-with-tt-move:", cutsWithTTMove, "tt-move-cuts:", PerC(s.NTTMoveCutsByD[d], cutsWithTTMove), "all-nodes-with-tt-move", allNodesWithTTMove, "all-nodes-with-tt-move-best-of-all:", PerC(allNodesWithTTMoveBest, allNodesWithTTMove))
+	}
+
+	fmt.Println()
+	
+	for d := 0; d < 13; d++ {
+		nodesLeftByD1 := s.AfterNullNodesByD1[d]
+		
+		cutsWithTTMove = s.NTTMoveCutsByD1[d] + s.NTTMoveOtherCutsByD1[d]
+		allNodesWithTTMove = s.NTTMovesByD1[d] - cutsWithTTMove
+		allNodesWithTTMoveBest = s.NTTMovesBestByD1[d] - s.NTTMoveCutsByD1[d]
+		
+		fmt.Println("info string tt-d1", d, "tt-moves:", PerC(s.NTTMovesByD1[d], nodesLeftByD1), "tt-move-best:", PerC(s.NTTMovesBestByD1[d], s.NTTMovesByD1[d]), "cuts-with-tt-move:", cutsWithTTMove, "tt-move-cuts:", PerC(s.NTTMoveCutsByD1[d], cutsWithTTMove), "all-nodes-with-tt-move", allNodesWithTTMove, "all-nodes-with-tt-move-best-of-all:", PerC(allNodesWithTTMoveBest, allNodesWithTTMove))
+	}
 	
 	fmt.Println()
 }

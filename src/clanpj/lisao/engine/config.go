@@ -13,29 +13,29 @@ const (
 )
 
 var SearchAlgorithm = NegAlphaBeta
-var DumpSearchStats = false//true
+var DumpSearchStats = true
 var SearchDepth = 7          // Ignored now that time control is implemented
 var SearchCutoffPercent = 30 // If we've used more than this percentage of the target time then we bail on the search instead of starting a new depth
 var HeurUseNullMove = true
-var HeurUseLMR = true //false // true weaker than not using?
+var HeurUseLMR = false // true weaker than not using?
 var UseMoveOrdering = true
-var UseIDMoveHint = true
-var UseIDMoveHintAlways = true
+var UseIDMoveHint = false
+var UseIDMoveHintAlways = false
 var MinIDMoveHintDepth = 2
 var UseTT = true // true - switching off for now - still looks buggy at times
-var UseDeepTT = false //true // worse than not using?
+var UseDeepTT = true // worse than not using?
 var HeurUseTTDeeperHits = true // true iff we embrace deeper TT results as valid (heuristic!)
 var UsePosRepetition = true
 var QSearchDepth = 12
 var UseQSearchTT = true
-var HeurUseQTTDeeperHits = true //true // true iff we embrace deeper QTT results as valid (heuristic!)
+var HeurUseQTTDeeperHits = true // true iff we embrace deeper QTT results as valid (heuristic!)
 var UseQSearchMoveOrdering = true
 var UseQSearchRampagePruning = true // only valid if UseQSearchMoveOrdering == true
 var QSearchRampagePruningDepth = 4  // only valid if UseQSearchRampagePruning == true
 var UseQKillerMoves = true
 var UseQDeepKillerMoves = true
-var UseBalancedEval = false
-var EvalAlgorithm = PositionalEval // PiecePosEval
+var UseBalancedEval = true
+var EvalAlgorithm = PositionalEval //PiecePosEval
 
 func SearchAlgorithmString() string {
 	switch SearchAlgorithm {
