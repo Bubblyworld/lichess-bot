@@ -47,7 +47,11 @@ func updateTTEntry(entry *TTEntryT, eval EvalCp, bestMove dragon.Move, depthToGo
 	if evalType == TTEvalExact || evalType == TTEvalLowerBound {
 		// Replace if depth is greater or eval is more accurate
 		if entry.lbDepthToGoPlus1 < depthToGoPlus1 || (entry.lbDepthToGoPlus1 == depthToGoPlus1 && entry.lbEval < eval) {
-			entry.bestMove = bestMove
+			// If the eval came from a null-move cut then the bestMove is NoMove - keep ther previous best move
+			// Hrmmm - it's empirically WORSE to leave the previous move in place!
+			if true || bestMove != NoMove {
+				entry.bestMove = bestMove
+			}
 			entry.lbEval = eval
 			entry.lbDepthToGoPlus1 = depthToGoPlus1
 		}
@@ -57,7 +61,11 @@ func updateTTEntry(entry *TTEntryT, eval EvalCp, bestMove dragon.Move, depthToGo
 	if evalType == TTEvalExact || evalType == TTEvalUpperBound {
 		// Replace if depth is greater or eval is more accurate
 		if entry.ubDepthToGoPlus1 < depthToGoPlus1 || (entry.ubDepthToGoPlus1 == depthToGoPlus1 && eval < entry.ubEval) {
-			entry.bestMove = bestMove
+			// If the eval came from a null-move cut then the bestMove is NoMove - keep ther previous best move
+			// Hrmmm - it's empirically WORSE to leave the previous move in place!
+			if true || bestMove != NoMove {
+				entry.bestMove = bestMove
+			}
 			entry.ubEval = eval
 			entry.ubDepthToGoPlus1 = depthToGoPlus1
 		}

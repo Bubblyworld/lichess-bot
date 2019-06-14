@@ -58,6 +58,12 @@ type SearchStatsT struct {
 	NShallowBestMoveCuts uint64 // #nodes with shallow-best-move best and a cut
 	NShallowBestMoveOtherCuts uint64 // #nodes with shallow-best-move and another move cuts
 
+	D0TTProbes uint64 // #probes of the TT at depthToGo == 0
+	D0TTHits uint64 // #hits of the TT at depthToGo == 0
+	D0TTCuts uint64 // #cuts from the TT at depthToGo == 0
+	D0TTMoves uint64 // #hint moves from the TT at depthToGo == 0
+	D0TTUpdates uint64 // #updates of the TT at depthToGo == 0
+
 	NTTMoves uint64 // #nodes with tt-moves
 	NTTMovesBest uint64 // #nodes with best move == tt-move
 	NTTMoveCuts uint64 // #nodes with tt-move best and a cut
@@ -157,6 +163,10 @@ func (s *SearchStatsT) Dump/*CutStats*/(finalDepth int) {
 		
 	fmt.Println()
 
+	fmt.Println("info string d0-tt-probes:", s.D0TTProbes, "d0-tt-hits:", s.D0TTHits, "d0-tt-cuts:", s.D0TTCuts, "d0-tt-moves:", s.D0TTMoves, "d0-tt-updates:", s.D0TTUpdates)
+
+	fmt.Println()
+
 	fmt.Println("info string shallow-best-move-calls:", s.AfterNullNodes, "shallow-best-move-calcs:", PerC(s.NShallowBestMoveCalcs, s.AfterNullNodes), "nomove-shallow-best-move-calcs:", PerC(s.NNoMoveShallowBestMove, s.NShallowBestMoveCalcs))
 
 	fmt.Println("info string shallow-best-moves:", PerC(s.NShallowBestMoves, nodesLeft), "shallow-best-move-best:", PerC(s.NShallowBestMovesBest, s.NShallowBestMoves), "cuts-with-shallow-best-move:", cutsWithShallowBestMove, "shallow-best-move-cuts:", PerC(s.NShallowBestMoveCuts, cutsWithShallowBestMove), "all-nodes-with-shallow-best-move", allNodesWithShallowBestMove, "all-nodes-with-shallow-best-move-best-of-all:", PerC(allNodesWithShallowBestMoveBest, allNodesWithShallowBestMove))
@@ -181,16 +191,19 @@ func (s *SearchStatsT) Dump/*CutStats*/(finalDepth int) {
 		fmt.Println("info string depth", d, "tt-moves:", PerC(s.NTTMovesByD[d], nodesLeftByD), "tt-move-best:", PerC(s.NTTMovesBestByD[d], s.NTTMovesByD[d]), "cuts-with-tt-move:", cutsWithTTMove, "tt-move-cuts:", PerC(s.NTTMoveCutsByD[d], cutsWithTTMove), "all-nodes-with-tt-move", allNodesWithTTMove, "all-nodes-with-tt-move-best-of-all:", PerC(allNodesWithTTMoveBest, allNodesWithTTMove))
 	}
 
-	fmt.Println()
+	// Turns out we do well enough without looking at tt hit depth - most hits are at d-1 in any case from iterative deepening
+	if false {
+		fmt.Println()
 	
-	for d := 0; d < 13; d++ {
-		nodesLeftByD1 := s.AfterNullNodesByD1[d]
-		
-		cutsWithTTMove = s.NTTMoveCutsByD1[d] + s.NTTMoveOtherCutsByD1[d]
-		allNodesWithTTMove = s.NTTMovesByD1[d] - cutsWithTTMove
-		allNodesWithTTMoveBest = s.NTTMovesBestByD1[d] - s.NTTMoveCutsByD1[d]
-		
-		fmt.Println("info string tt-d1", d, "tt-moves:", PerC(s.NTTMovesByD1[d], nodesLeftByD1), "tt-move-best:", PerC(s.NTTMovesBestByD1[d], s.NTTMovesByD1[d]), "cuts-with-tt-move:", cutsWithTTMove, "tt-move-cuts:", PerC(s.NTTMoveCutsByD1[d], cutsWithTTMove), "all-nodes-with-tt-move", allNodesWithTTMove, "all-nodes-with-tt-move-best-of-all:", PerC(allNodesWithTTMoveBest, allNodesWithTTMove))
+		for d := 0; d < 13; d++ {
+			nodesLeftByD1 := s.AfterNullNodesByD1[d]
+			
+			cutsWithTTMove = s.NTTMoveCutsByD1[d] + s.NTTMoveOtherCutsByD1[d]
+			allNodesWithTTMove = s.NTTMovesByD1[d] - cutsWithTTMove
+			allNodesWithTTMoveBest = s.NTTMovesBestByD1[d] - s.NTTMoveCutsByD1[d]
+			
+			fmt.Println("info string tt-d1", d, "tt-moves:", PerC(s.NTTMovesByD1[d], nodesLeftByD1), "tt-move-best:", PerC(s.NTTMovesBestByD1[d], s.NTTMovesByD1[d]), "cuts-with-tt-move:", cutsWithTTMove, "tt-move-cuts:", PerC(s.NTTMoveCutsByD1[d], cutsWithTTMove), "all-nodes-with-tt-move", allNodesWithTTMove, "all-nodes-with-tt-move-best-of-all:", PerC(allNodesWithTTMoveBest, allNodesWithTTMove))
+		}
 	}
 	
 	fmt.Println()

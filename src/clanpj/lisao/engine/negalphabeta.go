@@ -83,7 +83,6 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 		// Try null-move - but never in check otherwise king gets captured and never when we need a (shallow) move hint
 		if !isInCheck && !needMove && beta != MyCheckMateEval && depthToGo >= nullMoveDepthSkip {
 			depthSkip := nullMoveDepthSkip
-			depthSkip++
 			if depthToGo >= 5 {
 				depthSkip++
 				if depthToGo >= 9 {
@@ -113,10 +112,14 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 
 func (s *SearchT) probeTT(depthToGo int, alpha EvalCp, beta EvalCp) (dragon.Move, int, EvalCp, bool) {
 	if UseTT {
+		//var deepTtEntry TTEntryT
+		//var isDeepTtHit bool
+		
 		// Try the deep TT
 		if UseDeepTT && depthToGo >= s.deepTtMinDepth() {
 			ttEntry, isTTHit := probeTT(tt2, s.board.Hash())
 			// We check that the TT entry is not a relic from a shallower search (in which case it is likely to be worse than the main TT entry)
+			// ??? What if we hit in the deep TT and not in the main TT ???
 			if isTTHit && s.ttHitIsDeep(&ttEntry) {
 				return s.processTtHit(&ttEntry, depthToGo, alpha, beta)
 			}
@@ -228,13 +231,15 @@ var NodesD0NegDiff = 0
 
 const MaxD0DM1EvalDiffEstimate = EvalCp(100)
 
-// Node eval at depth 1
+// Node eval at depth -1
 // Returns bestMove, eval, nChildrenVisited
 func (s *SearchT) NegAlphaBetaDepthM1(depthFromRoot int, alpha EvalCp, beta EvalCp, ttMove dragon.Move, eval0 EvalCp) (dragon.Move, EvalCp, int) {
 	// Maximise eval with beta cut-off
 	bestMoveM1 := NoMove
 	bestEvalM1 := YourCheckMateEval
 	nChildrenVisited := 0
+
+	// TODO - why no TT here?
 
 	// We use a fake run-once loop so that we can break after each search step rather than indenting code arbitrarily deeper with each new feature/optimisation.
 done:
@@ -412,8 +417,14 @@ func (s *SearchT) NegAlphaBeta(depthToGo int, depthFromRoot int, alpha EvalCp, b
 	origBeta := beta
 	origAlpha := alpha
 
+	if depthToGo <= 0 { s.stats.D0TTProbes++ }
 	// Probe the Transposition Table
 	ttMove, ttDepthToGo, ttEval, ttIsCut := s.probeTT(depthToGo, alpha, beta)
+	if depthToGo <= 0 {
+		if ttIsCut {
+			s.stats.D0TTCuts++
+		} else if ttMove != NoMove { s.stats.D0TTMoves++ }
+	}
 	if ttIsCut && (ttMove != NoMove || needMove == false) {
 		return ttMove, ttEval
 	}
@@ -437,6 +448,7 @@ done:
 	for once := true; once; once = false {
 		// Leaf node eval
 		if depthToGo <= 0 {
+			s.stats.AfterNullNodesByD[0]++
 			bestMove, bestEval, nChildrenVisited = s.NegAlphaBetaDepth0(depthFromRoot, alpha, beta, ttMove, eval0)
 			break done
 		}
@@ -593,14 +605,15 @@ done:
 
 	// Update the TT and stats - but only if the search was not truncated due to a time-out
 	if !isTimedOut(s.timeout) {
+		if depthToGo <= 0 { s.stats.D0TTUpdates++ }
 		s.updateTt(depthToGo, origAlpha, origBeta, bestEval, bestMove)
 
 		s.kt.addKillerMove(bestMove, depthFromRoot)
 
 		s.stats.AfterChildLoopNodes++
 
-		// This is irritating - leaf nodes also get here hence 0 < depthToGo
-		if 0 < depthToGo {
+		// This is irritating - leaf nodes also get here hence 0 < depthToGo, hrm this excludes d0 stats - what was I thinking?
+		if true || 0 < depthToGo {
 			// Exclude null-move cuts from best move origin stats hence bestMove != NoMove
 			if bestMove != NoMove {
 				if shallowBestMove != NoMove {
