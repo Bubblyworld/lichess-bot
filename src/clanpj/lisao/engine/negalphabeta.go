@@ -83,10 +83,13 @@ func (s *SearchT) nullMoveEval(depthToGo int, depthFromRoot int, alpha EvalCp, b
 		// Try null-move - but never in check otherwise king gets captured and never when we need a (shallow) move hint
 		if !isInCheck && !needMove && beta != MyCheckMateEval && depthToGo >= nullMoveDepthSkip {
 			depthSkip := nullMoveDepthSkip
-			if depthToGo >= 5 {
+			if depthToGo > nullMoveDepthSkip {
 				depthSkip++
-				if depthToGo >= 9 {
+				if depthToGo >= 5 {
 					depthSkip++
+					if depthToGo >= 9 {
+						depthSkip++
+					}
 				}
 			}
 			unapply := s.board.ApplyNullMove()
